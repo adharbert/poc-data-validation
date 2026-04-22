@@ -8,6 +8,7 @@
 .vs/
 *.log
 appsettings.Development.json
+
 # Ignore all log files inside that folder
 POC.CustomerValidation/POC.CustomerValidation.API/logs/
 POC.CustomerValidation/POC.CustomerValidation.API/logs/**
