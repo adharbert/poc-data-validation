@@ -1,0 +1,25 @@
+-- ============================================================
+--  Migration 001: Initial Schema
+--  Establishes tables that are not managed by the DACPAC diff
+--  when deploying to an existing database.
+--
+--  The DACPAC handles CREATE/ALTER for all schema objects.
+--  This file is included here only as a reference baseline;
+--  actual deployment is driven by PreDeploy.sql and the DACPAC.
+-- ============================================================
+
+-- Organizations & Customers use temporal system-versioning.
+-- The history tables (Organizations_History, Customers_History)
+-- are created automatically by SQL Server when SYSTEM_VERSIONING
+-- is turned ON.  They do not need separate CREATE TABLE statements.
+
+-- Table creation order (respects FK dependencies):
+--   1. Organizations         (no FK deps)
+--   2. Customers             (-> Organizations)
+--   3. FieldSections         (-> Organizations)
+--   4. FieldDefinitions      (-> Organizations, FieldSections)
+--   5. FieldOptions          (-> FieldDefinitions)
+--   6. FieldValues           (-> Customers, FieldDefinitions)
+--   7. FieldValueSelections  (-> FieldValues, FieldOptions)
+--   8. FieldValuesHistory    (no enforced FK — audit/append-only)
+--   9. ValidationSessions    (-> Customers)

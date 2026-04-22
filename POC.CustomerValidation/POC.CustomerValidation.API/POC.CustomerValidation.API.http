@@ -1,0 +1,6 @@
+@POC.CustomerValidation.API_HostAddress = http://localhost:5035
+
+GET {{POC.CustomerValidation.API_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

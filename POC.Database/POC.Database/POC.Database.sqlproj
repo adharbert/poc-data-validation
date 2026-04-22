@@ -1,0 +1,18 @@
+<Project DefaultTargets="Build">
+  <Sdk Name="Microsoft.Build.Sql" Version="2.2.0-preview.1" />
+  <PropertyGroup>
+    <Name>POC.Database</Name>
+    <DSP>Microsoft.Data.Tools.Schema.Sql.Sql160DatabaseSchemaProvider</DSP>
+    <ModelCollation>1033, CI</ModelCollation>
+    <DefaultSchema>dbo</DefaultSchema>
+  </PropertyGroup>
+  <ItemGroup>
+    <PreDeploy Include="Scripts\PreDeploy.sql" />
+    <PostDeploy Include="Scripts\PostDeploy.sql" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Dev-only and reference scripts are not part of the schema model -->
+    <None Include="Scripts\SeedData\DevOnly_03_CustomerSampleData.sql" />
+    <None Include="Scripts\Migrations\001_InitialSchema.sql" />
+  </ItemGroup>
+</Project>

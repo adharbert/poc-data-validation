@@ -1,0 +1,38 @@
+# ========================
+# .NET API
+# ========================
+**/bin/
+**/obj/
+*.user
+*.suo
+.vs/
+*.log
+appsettings.Development.json
+# Ignore all log files inside that folder
+POC.CustomerValidation/POC.CustomerValidation.API/logs/
+POC.CustomerValidation/POC.CustomerValidation.API/logs/**
+
+# ========================
+# ReactJS
+# ========================
+**/node_modules/
+**/build/
+**/.env
+**/.env.local
+**/.env.production
+npm-debug.log*
+yarn-error.log*
+
+# ========================
+# SQL / Database
+# ========================
+*.bak
+*.mdf
+*.ldf
+
+# ========================
+# General
+# ========================
+.DS_Store
+Thumbs.db
+*.tmp
