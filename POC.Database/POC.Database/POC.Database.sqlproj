@@ -5,6 +5,7 @@
     <DSP>Microsoft.Data.Tools.Schema.Sql.Sql160DatabaseSchemaProvider</DSP>
     <ModelCollation>1033, CI</ModelCollation>
     <DefaultSchema>dbo</DefaultSchema>
+    <TargetDatabaseSet>True</TargetDatabaseSet>
   </PropertyGroup>
   <ItemGroup>
     <PreDeploy Include="Scripts\PreDeploy.sql" />
@@ -12,7 +13,47 @@
   </ItemGroup>
   <ItemGroup>
     <!-- Dev-only and reference scripts are not part of the schema model -->
-    <None Include="Scripts\SeedData\DevOnly_03_CustomerSampleData.sql" />
+    <None Include="Scripts\SeedData\DevOnly_04_CustomerSampleData.sql" />
     <None Include="Scripts\Migrations\001_InitialSchema.sql" />
+  </ItemGroup>
+  <ItemGroup>
+    <Folder Include="Scripts\" />
+    <Folder Include="Scripts\SeedData\" />
+    <Folder Include="Scripts\Migrations\" />
+    <Folder Include="tables" />
+    <Folder Include="views" />
+  </ItemGroup>
+  <ItemGroup>
+    <Build Include="tables\Customers.Indexes.sql" />
+    <Build Include="tables\Customers.sql" />
+    <Build Include="tables\FieldDefinitions.Indexes.sql" />
+    <Build Include="tables\FieldDefinitions.Indexes2.sql" />
+    <Build Include="tables\FieldDefinitions.sql" />
+    <Build Include="tables\FieldOptions.Indexes.sql" />
+    <Build Include="tables\FieldOptions.sql" />
+    <Build Include="tables\FieldSections.Indexes.sql" />
+    <Build Include="tables\FieldSections.sql" />
+    <Build Include="tables\FieldValues.Indexes.sql" />
+    <Build Include="tables\FieldValues.Indexes2.sql" />
+    <Build Include="tables\FieldValues.sql" />
+    <Build Include="tables\FieldValueSelections.Indexes.sql" />
+    <Build Include="tables\FieldValueSelections.Indexes2.sql" />
+    <Build Include="tables\FieldValueSelections.sql" />
+    <Build Include="tables\FieldValuesHistory.Indexes.sql" />
+    <Build Include="tables\FieldValuesHistory.Indexes2.sql" />
+    <Build Include="tables\FieldValuesHistory.sql" />
+    <Build Include="tables\Organizations.Indexes.Filtered.sql" />
+    <Build Include="tables\Organizations.Indexes.sql" />
+    <Build Include="tables\Organizations.sql" />
+    <Build Include="tables\ValidationSessions.Indexes.sql" />
+    <Build Include="tables\ValidationSessions.sql" />
+    <Build Include="views\vCustomerFieldValues.sql" />
+    <Build Include="tables\ImportBatches.sql" />
+    <Build Include="tables\ImportColumnMappings.sql" />
+    <Build Include="tables\ImportErrors.sql" />
+    <Build Include="tables\ImportValueMappings.sql" />
+    <Build Include="Scripts\SeedData\01_StateOptions.sql" />
+    <Build Include="Scripts\SeedData\02_HighestSchoolingOptions.sql" />
+    <Build Include="Scripts\SeedData\DEVOnly_03_Organizations-Fake.sql" />
   </ItemGroup>
 </Project>

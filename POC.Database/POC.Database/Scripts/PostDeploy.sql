@@ -46,5 +46,7 @@ END
 
 :r ".\SeedData\01_StateOptions.sql"
 :r ".\SeedData\02_HighestSchoolingOptions.sql"
+:r ".\SeedData\DEVOnly_03_Organizations-Fake.sql"
+:r ".\SeedData\DevOnly_04_CustomerSampleData.sql"
 
 PRINT 'PostDeploy completed successfully.';

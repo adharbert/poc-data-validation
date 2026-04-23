@@ -1,16 +1,25 @@
-CREATE TABLE [dbo].[FieldValuesHistory] (
-    [Id]                [uniqueidentifier] NOT NULL CONSTRAINT [DF_FieldValuesHistory_Id] DEFAULT (newsequentialid()),
-    [FieldValueId]      [uniqueidentifier] NOT NULL,
-    [CustomerId]        [uniqueidentifier] NOT NULL,
-    [FieldDefinitionId] [uniqueidentifier] NOT NULL,
-    [ValueText]         [nvarchar](max)    NULL,
-    [ValueNumber]       [decimal](10, 4)   NULL,
-    [ValueDate]         [date]             NULL,
-    [ValueDatetime]     [datetime]         NULL,
-    [ValueBoolean]      [bit]              NULL,
-    [ChangeBy]          [nvarchar](200)    NULL,
-    [ChangeAt]          [datetime]         NOT NULL CONSTRAINT [DF_FieldValuesHistory_ChangeAt] DEFAULT (getutcdate()),
-    [ChangeReason]      [nvarchar](500)    NULL,
+-- ============================================================
+--  FIELD_VALUE_HISTORY
+--  Append-only audit trail.  Every time a value changes, the
+--  old value is written here before the update.
+-- ============================================================
 
-    CONSTRAINT [PK_FieldValuesHistory] PRIMARY KEY CLUSTERED ([Id])
-);
+CREATE TABLE FieldValuesHistory (
+	[Id]					[uniqueidentifier]	NOT NULL	DEFAULT (newsequentialid()),
+	[FieldValueId]			[uniqueidentifier]	NOT NULL,
+	[CustomerId]			[uniqueidentifier]	NOT NULL,
+	[FieldDefinitionId]		[uniqueidentifier]	NOT NULL,
+	[ValueText]				nvarchar(MAX)		NULL,		-- text, dropdown
+	[ValueNumber]			DECIMAL(10,4)		NULL,		-- number
+	[ValueDate]				date				NULL,		-- date
+	[ValueDatetime]			dateTime			NULL,		-- Datetime
+	[ValueBoolean]			bit					NULL,		-- checkbox
+	[ChangeBy]				nvarchar(200)		NULL,
+	[ChangeAt]				datetime			NOT NULL	DEFAULT(GETUTCDATE()),
+	[ChangeReason]			nvarchar(500)		NULL,
+
+	CONSTRAINT [PK_FieldValuesHistory] PRIMARY KEY CLUSTERED (Id),
+)
+
+CREATE INDEX IX_FieldValuesHistory_Value    ON FieldValuesHistory ([FieldValueId], [ChangeAt] DESC);
+CREATE INDEX IX_FieldValuesHistory_Customer ON FieldValuesHistory ([CustomerId], [ChangeAt] DESC);
