@@ -2,7 +2,7 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{00D1A9C2-B5F0-4AF3-8072-F6C62B433612}") = "POC.Database", "POC.Database\POC.Database.sqlproj", "{E99485D4-B4DD-4E74-A477-B7AC3B00A057}"
+Project("{00D1A9C2-B5F0-4AF3-8072-F6C62B433612}") = "POC.Database", "POC.Database\POC.Database.sqlproj", "{F18D2A3F-3F8C-442B-A76D-FA6C48B4374E}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -10,10 +10,10 @@ Global
 		Release|Any CPU = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
-		{E99485D4-B4DD-4E74-A477-B7AC3B00A057}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{E99485D4-B4DD-4E74-A477-B7AC3B00A057}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{E99485D4-B4DD-4E74-A477-B7AC3B00A057}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{E99485D4-B4DD-4E74-A477-B7AC3B00A057}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F18D2A3F-3F8C-442B-A76D-FA6C48B4374E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F18D2A3F-3F8C-442B-A76D-FA6C48B4374E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F18D2A3F-3F8C-442B-A76D-FA6C48B4374E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F18D2A3F-3F8C-442B-A76D-FA6C48B4374E}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
