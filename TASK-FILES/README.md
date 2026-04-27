@@ -125,14 +125,16 @@ EchoCustomerValidation/
 │       │   └── styles/main.scss
 │       ├── package.json
 │       └── vite.config.js
-└── docs/                                       ← All .md documentation
+└── TASK-FILES/                                 ← All .md documentation
     ├── README.md                               ← This file
-    ├── DATABASE.md                             ← Full schema reference
-    ├── API.md                                  ← All endpoints
-    ├── FRONTEND.md                             ← React app conventions
-    ├── IMPORT.md                               ← CSV/Excel import design
-    ├── CODING_CONVENTIONS.md                   ← Rules for Claude Code
-    └── WHATS_NEXT.md                           ← Remaining work
+    ├── TASK-01-project-structure.md            ← Project structure overview
+    ├── TASK-02-PROJECT_PLAN.md                 ← Phased build plan
+    ├── TASK-03-CODING_CONVENTIONS.md           ← Rules for Claude Code
+    ├── TASK-04-DATABASE.md                     ← Full schema reference
+    ├── TASK-05-API.md                          ← All endpoints
+    ├── TASK-06-FRONTEND.md                     ← React app conventions
+    ├── TASK-07-IMPORT.md                       ← CSV/Excel import design
+    └── TASK-08-WHATS_NEXT.md                   ← Remaining work
 ```
 
 ---
@@ -182,9 +184,12 @@ App: `http://localhost:5173`
 
 | File | Description |
 |---|---|
-| `DATABASE.md` | Full schema, all tables, relationships, FK diagram |
-| `API.md` | All existing endpoints with request/response shapes |
-| `FRONTEND.md` | React app structure, conventions, component guide |
-| `IMPORT.md` | CSV/Excel import design, field mapping, CustomerCode generation |
-| `CODING_CONVENTIONS.md` | Rules and patterns — critical for Claude Code sessions |
-| `WHATS_NEXT.md` | Everything not yet built, prioritised |
+| `TASK-01-project-structure.md` | Project structure overview |
+| `TASK-02-PROJECT_PLAN.md` | Phased build plan with tasks and dependencies |
+| `TASK-03-CODING_CONVENTIONS.md` | Rules and patterns — critical for Claude Code sessions |
+| `TASK-04-DATABASE.md` | Full schema, all tables, relationships, FK diagram |
+| `TASK-05-API.md` | All existing endpoints with request/response shapes |
+| `TASK-06-FRONTEND.md` | React app structure, conventions, component guide |
+| `TASK-07-IMPORT.md` | CSV/Excel import design, field mapping, CustomerCode generation |
+| `TASK-08-WHATS_NEXT.md` | Everything not yet built, prioritised |
+| `TASK-09-CONTRACTS-PROJECTS.md` | Contracts, Marketing Projects, Import Staging — business rules and schema |

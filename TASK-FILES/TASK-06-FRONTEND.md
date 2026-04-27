@@ -82,7 +82,7 @@ All API calls use relative URLs: `/api/organisations`, `/api/fields/...`
 ```
 src/
 ├── api/
-│   ├── client.js          ← fetch wrapper (see below)
+│   ├── organization.js          ← fetch wrapper (see below)
 │   └── services.js        ← all API call functions
 ├── components/
 │   ├── common/
@@ -94,7 +94,7 @@ src/
 ├── hooks/
 │   └── useApi.js          ← React Query hooks
 ├── pages/
-│   ├── ClientsPage.jsx
+│   ├── organizationsPage.jsx
 │   └── FieldDefinitionsPage.jsx
 └── styles/
     └── main.scss          ← Bootstrap overrides + layout
@@ -102,7 +102,7 @@ src/
 
 ---
 
-## API Client (`src/api/client.js`)
+## API organization (`src/api/organization.js`)
 
 Thin `fetch` wrapper that mirrors the axios call signature so
 `services.js` can use `.then(r => r.data)` on every call.
@@ -120,8 +120,8 @@ const api = {
 
 Query string params are passed as `{ params: { key: value } }`:
 ```js
-api.get('/clients', { params: { includeInactive: true } })
-// fetches: /api/clients?includeInactive=true
+api.get('/organizations', { params: { includeInactive: true } })
+// fetches: /api/organizations?includeInactive=true
 ```
 
 ---
@@ -133,24 +133,24 @@ centralised in the `QK` object to keep cache invalidation consistent.
 
 ```js
 export const QK = {
-  clients:  (inactive) => ['clients', inactive],
-  client:   (id)       => ['clients', id],
-  fields:   (clientId) => ['fields', clientId],
-  options:  (fieldId)  => ['options', fieldId],
-  values:   (custId)   => ['values', custId],
-  history:  (custId)   => ['history', custId],
+  organizations:  (inactive)        => ['organizations', inactive],
+  organization:   (id)              => ['organizations', id],
+  fields:         (organizationId)  => ['fields', organizationId],
+  options:        (fieldId)         => ['options', fieldId],
+  values:         (custId)          => ['values', custId],
+  history:        (custId)          => ['history', custId],
 }
 ```
 
 **Pattern — reading data:**
 ```jsx
-const { data: clients, isLoading, isError } = useClients()
+const { data: organizations, isLoading, isError } = useOrganizations()
 ```
 
 **Pattern — mutations:**
 ```jsx
-const createMutation = useCreateClient()
-await createMutation.mutateAsync({ clientName: 'Acme', clientCode: 'ACME' })
+const createMutation = useCreateOrganization()
+await createMutation.mutateAsync({ organizationName: 'Acme', organizationCode: 'ACME' })
 ```
 
 ---
@@ -182,9 +182,9 @@ await createMutation.mutateAsync({ clientName: 'Acme', clientCode: 'ACME' })
 Routes are defined in `main.jsx` as children of `<AppLayout />`:
 ```jsx
 <Route element={<AppLayout />}>
-  <Route index element={<Navigate to="/clients" replace />} />
-  <Route path="clients" element={<ClientsPage />} />
-  <Route path="clients/:clientId/fields" element={<FieldDefinitionsPage />} />
+  <Route index element={<Navigate to="/organizations" replace />} />
+  <Route path="organizations" element={<CrganizationsPage />} />
+  <Route path="organizations/:organizationId/fields" element={<FieldDefinitionsPage />} />
 </Route>
 ```
 
@@ -192,16 +192,16 @@ Routes are defined in `main.jsx` as children of `<AppLayout />`:
 
 ## Existing Pages
 
-### ClientsPage (`/clients`)
-- Table of all clients with name, code, active status, created date
-- Create client modal (name + code)
-- Edit client modal (name + code + active toggle)
+### OrganizationsPage (`/organizations`)
+- Table of all organizations with name, code, active status, created date
+- Create organization modal (name + code)
+- Edit organization modal (name + code + active toggle)
 - Deactivate with confirmation dialog
 - Show inactive toggle
-- Links to field definitions per client
+- Links to field definitions per organization
 
-### FieldDefinitionsPage (`/clients/:clientId/fields`)
-- Breadcrumb navigation back to clients
+### FieldDefinitionsPage (`/organizations/:organizationId/fields`)
+- Breadcrumb navigation back to organizations
 - Drag-to-reorder table using `@dnd-kit`
 - Field type badges colour-coded by type
 - Create field modal — all field properties, type-aware (shows validation
@@ -239,8 +239,8 @@ Custom CSS classes:
 
 | Page | Route | Description |
 |---|---|---|
-| Customers | `/clients/:clientId/customers` | Customer list with progress bars |
-| Customer detail | `/clients/:clientId/customers/:customerId` | Field values + history |
-| Import | `/clients/:clientId/import` | CSV/Excel upload + field mapping wizard |
-| Import history | `/clients/:clientId/import/history` | Past import batches |
-| Dashboard | `/` | Summary stats across all clients |
+| Customers | `/organizations/:organizationId/customers` | Customer list with progress bars |
+| Customer detail | `/organizations/:organizationId/customers/:customerId` | Field values + history |
+| Import | `/organizations/:organizationId/import` | CSV/Excel upload + field mapping wizard |
+| Import history | `/organizations/:organizationId/import/history` | Past import batches |
+| Dashboard | `/` | Summary stats across all organizations |

@@ -302,15 +302,136 @@ HeaderFingerprint` for automatic reuse on future uploads.
 
 ---
 
+---
+
+## Customers — OriginalId (Phase 2 addition)
+
+The `Customers` table has an additional column added via migration:
+
+| Column | Type | Notes |
+|---|---|---|
+| OriginalId | NVARCHAR(100) | NULL. Client's own ID (member no., account no., etc.) |
+
+See `scripts/Migrations/Migration_001_CustomerOriginalId.sql`.
+Indexed on `(OrganizationId, OriginalId) WHERE OriginalId IS NOT NULL`.
+
+---
+
+## Contracts
+
+One row per contract per organisation. Only one may be active at a time
+(filtered unique index).
+
+| Column | Type | Notes |
+|---|---|---|
+| Id | UNIQUEIDENTIFIER | PK, `NEWSEQUENTIALID()` |
+| OrganizationId | UNIQUEIDENTIFIER | FK → Organizations |
+| ContractName | NVARCHAR(200) | |
+| ContractNumber | NVARCHAR(100) | NULL — external CRM reference |
+| StartDate | DATE | |
+| EndDate | DATE | NULL = open-ended |
+| IsActive | BIT | Default 1 |
+| Notes | NVARCHAR(1000) | NULL |
+| CreatedDt | DATETIME | |
+| CreatedBy | NVARCHAR(200) | |
+| ModifiedDt | DATETIME | NULL |
+| ModifiedBy | NVARCHAR(200) | NULL |
+
+**Constraints:**
+- `UQ_Contracts_ActivePerOrg` — filtered unique index `(OrganizationId) WHERE IsActive = 1`
+- `CK_Contracts_Dates` — `EndDate IS NULL OR EndDate >= StartDate`
+
+---
+
+## MarketingProjects
+
+Represents a marketing project for an organisation. Multiple can be
+active simultaneously. Project IDs start at 8000.
+
+| Column | Type | Notes |
+|---|---|---|
+| Id | INT | PK, `IDENTITY(8000,1)` — the "Project ID" |
+| OrganizationId | UNIQUEIDENTIFIER | FK → Organizations |
+| ContractId | UNIQUEIDENTIFIER | FK → Contracts, NULL (optional) |
+| ProjectName | NVARCHAR(200) | |
+| MarketingStartDate | DATE | |
+| MarketingEndDate | DATE | NULL = ongoing |
+| IsActive | BIT | Default 1 |
+| Notes | NVARCHAR(1000) | NULL |
+| CreatedDt | DATETIME | |
+| CreatedBy | NVARCHAR(200) | |
+| ModifiedDt | DATETIME | NULL |
+| ModifiedBy | NVARCHAR(200) | NULL |
+
+**Constraints:**
+- `CK_MarketingProjects_Dates` — `MarketingEndDate IS NULL OR MarketingEndDate >= MarketingStartDate`
+
+**Index:** `IX_MarketingProjects_EndDate` on `(MarketingEndDate) WHERE MarketingEndDate IS NOT NULL AND IsActive = 1`
+— supports the dashboard expiring-projects query efficiently.
+
+---
+
+## ImportColumnStaging
+
+Persistent table for CSV/Excel headers that could not be auto-matched
+during an import upload. One row per unique header per organisation.
+
+| Column | Type | Notes |
+|---|---|---|
+| Id | UNIQUEIDENTIFIER | PK |
+| OrganizationId | UNIQUEIDENTIFIER | FK → Organizations |
+| CsvHeader | NVARCHAR(200) | Exact header text from file |
+| HeaderNormalized | NVARCHAR(200) | Lowercased + trimmed (used for matching) |
+| Status | NVARCHAR(20) | `unmatched`, `resolved`, `skipped` |
+| MappingType | NVARCHAR(20) | NULL, `customer_field`, `field_definition` |
+| CustomerFieldName | NVARCHAR(100) | NULL |
+| FieldDefinitionId | UNIQUEIDENTIFIER | FK → FieldDefinitions, NULL |
+| FirstSeenAt | DATETIME2 | |
+| LastSeenAt | DATETIME2 | Updated each time the header is seen again |
+| SeenCount | INT | Incremented on each upload containing this header |
+| ResolvedAt | DATETIME2 | NULL |
+| ResolvedBy | NVARCHAR(200) | NULL |
+| Notes | NVARCHAR(500) | NULL |
+
+**Constraints:**
+- `UQ_ImportColumnStaging_OrgHeader` — UNIQUE `(OrganizationId, HeaderNormalized)`
+- `CK_ImportColumnStaging_Status` — `Status IN ('unmatched','resolved','skipped')`
+
+---
+
+## SavedColumnMappings
+
+Persists successful column mappings keyed by `OrganizationId + HeaderFingerprint`
+for auto-reuse on future uploads with identical headers.
+
+| Column | Type | Notes |
+|---|---|---|
+| Id | UNIQUEIDENTIFIER | PK |
+| OrganizationId | UNIQUEIDENTIFIER | FK → Organizations |
+| HeaderFingerprint | NVARCHAR(64) | SHA-256 of sorted headers |
+| CsvHeader | NVARCHAR(200) | |
+| CsvColumnIndex | INT | |
+| MappingType | NVARCHAR(20) | |
+| CustomerFieldName | NVARCHAR(100) | NULL |
+| FieldDefinitionId | UNIQUEIDENTIFIER | FK → FieldDefinitions, NULL |
+| DisplayOrder | INT | |
+| LastUsedAt | DATETIME2 | Updated on each reuse |
+| UseCount | INT | Incremented on each reuse |
+
+**Index:** `UQ_SavedColumnMappings_OrgFingerprintHeader` — UNIQUE `(OrganizationId, HeaderFingerprint, CsvHeader)`
+
+---
+
 ## Migration Scripts (run in order)
 
 ```
-1. (base schema)                                  -- Organizations, Customers, etc.
-2. SeedData.sql                                   -- 50 customers, 10 field definitions
-3. SeedDataFieldOptions_States.sql               -- 54 US state options
-4. SeedDataFieldOptions_HighestDegree.sql        -- 7 degree options (generate separately)
-5. Migration_ImportTables.sql                    -- 5 import tables
-6. Migration_AbbreviationAndImportUpdates.sql    -- Abbreviation constraints + import additions
+1. (base schema)                                           -- Organizations, Customers, etc.
+2. scripts/Post-Deployment/01_StateOptions.sql             -- 54 US state options
+3. scripts/Post-Deployment/02_HighestSchoolingOptions.sql  -- 7 degree options
+4. scripts/Post-Deployment/DEVOnly_03_Organizations-Fake.sql  -- dev seed data
+5. scripts/Post-Deployment/DevOnly_04_CustomerSampleData.sql  -- dev customer data
+6. scripts/Migrations/Migration_001_CustomerOriginalId.sql -- OriginalId on Customers
+7. scripts/Migrations/Migration_002_ImportBatches_AddColumns.sql -- FileType, DuplicateStrategy, FileStoragePath
 ```
 
 ---

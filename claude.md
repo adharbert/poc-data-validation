@@ -21,13 +21,15 @@ covered by the quick-reference rules below.
 | File | What's in it |
 |---|---|
 | [TASK-FILES/README.md](TASK-FILES/README.md) | Architecture, tech stack, solution structure, getting started |
-| [TASK-FILES/DATABASE.md](TASK-FILES/DATABASE.md) | Full schema — all tables, columns, constraints, import tables |
-| [TASK-FILES/API.md](TASK-FILES/API.md) | All endpoints (existing + planned) with request/response shapes |
-| [TASK-FILES/FRONTEND.md](TASK-FILES/FRONTEND.md) | React app structure, component guide, API client pattern |
-| [TASK-FILES/CODING_CONVENTIONS.md](TASK-FILES/CODING_CONVENTIONS.md) | All rules — must read before writing any code |
-| [TASK-FILES/IMPORT.md](TASK-FILES/IMPORT.md) | CSV/Excel import design, 5-step flow, value mapping |
-| [TASK-FILES/WHATS_NEXT.md](TASK-FILES/WHATS_NEXT.md) | Remaining work, prioritised |
-| [TASK-FILES/PROJECT_PLAN.md](TASK-FILES/PROJECT_PLAN.md) | Phased build plan with tasks and dependencies |
+| [TASK-FILES/TASK-01-project-structure.md](TASK-FILES/TASK-01-project-structure.md) | Project structure overview |
+| [TASK-FILES/TASK-02-PROJECT_PLAN.md](TASK-FILES/TASK-02-PROJECT_PLAN.md) | Phased build plan with tasks and dependencies |
+| [TASK-FILES/TASK-03-CODING_CONVENTIONS.md](TASK-FILES/TASK-03-CODING_CONVENTIONS.md) | All rules — must read before writing any code |
+| [TASK-FILES/TASK-04-DATABASE.md](TASK-FILES/TASK-04-DATABASE.md) | Full schema — all tables, columns, constraints, import tables |
+| [TASK-FILES/TASK-05-API.md](TASK-FILES/TASK-05-API.md) | All endpoints (existing + planned) with request/response shapes |
+| [TASK-FILES/TASK-06-FRONTEND.md](TASK-FILES/TASK-06-FRONTEND.md) | React app structure, component guide, API client pattern |
+| [TASK-FILES/TASK-07-IMPORT.md](TASK-FILES/TASK-07-IMPORT.md) | CSV/Excel import design, 5-step flow, value mapping |
+| [TASK-FILES/TASK-08-WHATS_NEXT.md](TASK-FILES/TASK-08-WHATS_NEXT.md) | Remaining work, prioritised |
+| [TASK-FILES/TASK-09-CONTRACTS-PROJECTS.md](TASK-FILES/TASK-09-CONTRACTS-PROJECTS.md) | Contracts, Marketing Projects, Import Staging — business rules and schema |
 
 ---
 
@@ -37,7 +39,7 @@ covered by the quick-reference rules below.
 # Both API + React
 cd ClientAdmin/datavalidation-portal && npm run dev:all
 
-# API only  — https://localhost:7017  (Scalar: /scalar/v1)
+# API only  — https://localhost:7124  (Scalar: /scalar/v1)
 dotnet run --project POC.CustomerValidation/POC.CustomerValidation.API --launch-profile https
 
 # React admin only — http://localhost:5173

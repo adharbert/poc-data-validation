@@ -10,7 +10,12 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
-*.local
+
+# Environment local overrides — these can contain secrets and are not committed.
+# The base .env.development / .env.staging / .env.production files ARE committed
+# (they contain no secrets — only URLs and feature flags).
+.env.local
+.env.*.local
 
 # Editor directories and files
 .vscode/*

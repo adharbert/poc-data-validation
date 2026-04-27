@@ -231,6 +231,282 @@ public record ApiError(
 );
 
 
+// -------------------------------------------------------
+// Customer DTOs
+// -------------------------------------------------------
+
+public record CustomerDto
+{
+    public Guid     CustomerId      { get; init; }
+    public Guid     OrganizationId  { get; init; }
+    public string   FirstName       { get; init; } = default!;
+    public string   LastName        { get; init; } = default!;
+    public string?  MiddleName      { get; init; }
+    public string   CustomerCode    { get; init; } = default!;
+    public string?  OriginalId      { get; init; }
+    public string?  Email           { get; init; }
+    public bool     IsActive        { get; init; }
+    public DateTime CreatedDate     { get; init; }
+    public DateTime ModifiedDate    { get; init; }
+}
+
+public record CreateCustomerRequest
+{
+    public string   FirstName   { get; init; } = default!;
+    public string   LastName    { get; init; } = default!;
+    public string?  MiddleName  { get; init; }
+    public string?  OriginalId  { get; init; }
+    public string?  Email       { get; init; }
+}
+
+public record UpdateCustomerRequest
+{
+    public string   FirstName   { get; init; } = default!;
+    public string   LastName    { get; init; } = default!;
+    public string?  MiddleName  { get; init; }
+    public string?  OriginalId  { get; init; }
+    public string?  Email       { get; init; }
+    public bool     IsActive    { get; init; }
+}
+
+
+// -------------------------------------------------------
+// Contract DTOs
+// -------------------------------------------------------
+
+public record ContractDto
+{
+    public Guid         ContractId      { get; init; }
+    public Guid         OrganizationId  { get; init; }
+    public string       ContractName    { get; init; } = default!;
+    public string?      ContractNumber  { get; init; }
+    public DateOnly     StartDate       { get; init; }
+    public DateOnly?    EndDate         { get; init; }
+    public bool         IsActive        { get; init; }
+    public string?      Notes           { get; init; }
+    public DateTime     CreatedDt       { get; init; }
+    public string       CreatedBy       { get; init; } = default!;
+    public DateTime?    ModifiedDt      { get; init; }
+    public string?      ModifiedBy      { get; init; }
+}
+
+public record CreateContractRequest
+{
+    public string       ContractName    { get; init; } = default!;
+    public string?      ContractNumber  { get; init; }
+    public DateOnly     StartDate       { get; init; }
+    public DateOnly?    EndDate         { get; init; }
+    public string?      Notes           { get; init; }
+    public string       CreatedBy       { get; init; } = "System";
+}
+
+public record UpdateContractRequest
+{
+    public string       ContractName    { get; init; } = default!;
+    public string?      ContractNumber  { get; init; }
+    public DateOnly     StartDate       { get; init; }
+    public DateOnly?    EndDate         { get; init; }
+    public string?      Notes           { get; init; }
+    public string       ModifiedBy      { get; init; } = "System";
+}
+
+
+// -------------------------------------------------------
+// Marketing Project DTOs
+// -------------------------------------------------------
+
+public record MarketingProjectDto
+{
+    public int          ProjectId           { get; init; }
+    public Guid         OrganizationId      { get; init; }
+    public string       OrganizationName    { get; init; } = default!;
+    public Guid?        ContractId          { get; init; }
+    public string       ProjectName         { get; init; } = default!;
+    public DateOnly     MarketingStartDate  { get; init; }
+    public DateOnly?    MarketingEndDate    { get; init; }
+    public bool         IsActive            { get; init; }
+    public string?      Notes               { get; init; }
+    public DateTime     CreatedDt           { get; init; }
+    public string       CreatedBy           { get; init; } = default!;
+    public DateTime?    ModifiedDt          { get; init; }
+    public string?      ModifiedBy          { get; init; }
+}
+
+public record CreateMarketingProjectRequest
+{
+    public Guid?        ContractId          { get; init; }
+    public string       ProjectName         { get; init; } = default!;
+    public DateOnly     MarketingStartDate  { get; init; }
+    public DateOnly?    MarketingEndDate    { get; init; }
+    public string?      Notes               { get; init; }
+    public string       CreatedBy           { get; init; } = "System";
+}
+
+public record UpdateMarketingProjectRequest
+{
+    public Guid?        ContractId          { get; init; }
+    public string       ProjectName         { get; init; } = default!;
+    public DateOnly     MarketingStartDate  { get; init; }
+    public DateOnly?    MarketingEndDate    { get; init; }
+    public bool         IsActive            { get; init; }
+    public string?      Notes               { get; init; }
+    public string       ModifiedBy          { get; init; } = "System";
+}
+
+
+// -------------------------------------------------------
+// Dashboard DTOs
+// -------------------------------------------------------
+
+public record DashboardStatsDto
+{
+    public int                                  TotalActiveOrganizations    { get; init; }
+    public int                                  TotalActiveProjects         { get; init; }
+    public int                                  TotalCustomers              { get; init; }
+    public int                                  TotalVerifiedCustomers      { get; init; }
+    public IEnumerable<OrganisationSummaryDto>  OrganisationSummaries       { get; init; } = [];
+    public IEnumerable<ExpiringProjectDto>      ExpiringProjects            { get; init; } = [];
+}
+
+public record OrganisationSummaryDto
+{
+    public Guid     OrganisationId      { get; init; }
+    public string   OrganisationName    { get; init; } = default!;
+    public int      TotalCustomers      { get; init; }
+    public int      VerifiedCustomers   { get; init; }
+    public int      ActiveProjects      { get; init; }
+}
+
+public record ExpiringProjectDto
+{
+    public int      ProjectId           { get; init; }
+    public string   ProjectName         { get; init; } = default!;
+    public Guid     OrganisationId      { get; init; }
+    public string   OrganisationName    { get; init; } = default!;
+    public DateOnly MarketingEndDate    { get; init; }
+    public int      DaysUntilExpiry     { get; init; }
+}
+
+
+// -------------------------------------------------------
+// Import DTOs
+// -------------------------------------------------------
+
+public record ImportBatchDto
+{
+    public Guid         BatchId             { get; init; }
+    public Guid         OrganizationId      { get; init; }
+    public string       FileName            { get; init; } = default!;
+    public string?      FileType            { get; init; }
+    public int          TotalRows           { get; init; }
+    public int          ImportedRows        { get; init; }
+    public int          SkippedRows         { get; init; }
+    public int          ErrorRows           { get; init; }
+    public string       Status              { get; init; } = default!;
+    public string       DuplicateStrategy   { get; init; } = default!;
+    public string       UploadedBy          { get; init; } = default!;
+    public DateTime     UploadedAt          { get; init; }
+    public DateTime?    CompletedAt         { get; init; }
+    public string?      Notes               { get; init; }
+}
+
+public record UploadImportResponseDto
+{
+    public Guid                             BatchId         { get; init; }
+    public string[]                         Headers         { get; init; } = [];
+    public int                              RowCount        { get; init; }
+    public bool                             HasSavedMappings { get; init; }
+    public IEnumerable<ColumnMatchResultDto> ColumnMatches  { get; init; } = [];
+}
+
+public record ColumnMatchResultDto
+{
+    public int      ColumnIndex         { get; init; }
+    public string   CsvHeader           { get; init; } = default!;
+    public string   MatchStatus         { get; init; } = default!;  // matched | unmatched | skipped
+    public string?  MappingType         { get; init; }
+    public string?  CustomerFieldName   { get; init; }
+    public Guid?    FieldDefinitionId   { get; init; }
+    public string?  FieldLabel          { get; init; }
+    public bool     IsAutoMatched       { get; init; }
+}
+
+public record SaveMappingsRequest
+{
+    public string                           DuplicateStrategy   { get; init; } = "skip";
+    public IEnumerable<ColumnMappingDto>    Mappings            { get; init; } = [];
+}
+
+public record ColumnMappingDto
+{
+    public int      ColumnIndex         { get; init; }
+    public string   CsvHeader           { get; init; } = default!;
+    public string   MappingType         { get; init; } = default!;
+    public string?  CustomerFieldName   { get; init; }
+    public Guid?    FieldDefinitionId   { get; init; }
+    public bool     SaveForReuse        { get; init; }
+}
+
+public record ImportPreviewDto
+{
+    public IEnumerable<string>          Headers         { get; init; } = [];
+    public IEnumerable<PreviewRowDto>   Rows            { get; init; } = [];
+    public int                          OkCount         { get; init; }
+    public int                          WarningCount    { get; init; }
+    public int                          ErrorCount      { get; init; }
+}
+
+public record PreviewRowDto
+{
+    public int                      RowNumber   { get; init; }
+    public IEnumerable<string?>     Values      { get; init; } = [];
+    public string                   Status      { get; init; } = "ok";  // ok | warning | error
+    public string?                  Message     { get; init; }
+}
+
+public record ImportErrorDto
+{
+    public Guid     ErrorId         { get; init; }
+    public int      RowNumber       { get; init; }
+    public string   ErrorType       { get; init; } = default!;
+    public string   ErrorMessage    { get; init; } = default!;
+    public string   RawData         { get; init; } = default!;
+}
+
+
+// -------------------------------------------------------
+// Import Column Staging DTOs
+// -------------------------------------------------------
+
+public record ImportColumnStagingDto
+{
+    public Guid         StagingId           { get; init; }
+    public Guid         OrganizationId      { get; init; }
+    public string       CsvHeader           { get; init; } = default!;
+    public string       Status              { get; init; } = default!;
+    public string?      MappingType         { get; init; }
+    public string?      CustomerFieldName   { get; init; }
+    public Guid?        FieldDefinitionId   { get; init; }
+    public string?      FieldLabel          { get; init; }
+    public int          SeenCount           { get; init; }
+    public DateTime     FirstSeenAt         { get; init; }
+    public DateTime     LastSeenAt          { get; init; }
+    public DateTime?    ResolvedAt          { get; init; }
+    public string?      ResolvedBy          { get; init; }
+    public string?      Notes               { get; init; }
+}
+
+public record ResolveColumnStagingRequest
+{
+    public string   Status              { get; init; } = default!;  // resolved | skipped
+    public string?  MappingType         { get; init; }
+    public string?  CustomerFieldName   { get; init; }
+    public Guid?    FieldDefinitionId   { get; init; }
+    public string?  Notes               { get; init; }
+    public string   ResolvedBy          { get; init; } = "System";
+}
+
+
 
 
 
