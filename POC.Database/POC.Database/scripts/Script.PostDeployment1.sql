@@ -53,11 +53,11 @@ END
 -- ============================================================
 
 GO
-:r .\Post-Deployment\01_StateOptions.sql
-GO
-:r .\Post-Deployment\02_HighestSchoolingOptions.sql
-GO
-:r .\Post-Deployment\DEVOnly_03_Organizations-Fake.sql
-GO
+--:r .\Post-Deployment\01_StateOptions.sql
+--GO
+--:r .\Post-Deployment\02_HighestSchoolingOptions.sql
+--GO
+--:r .\Post-Deployment\DEVOnly_03_Organizations-Fake.sql
+--GO
 
 PRINT 'PostDeploy completed successfully.';

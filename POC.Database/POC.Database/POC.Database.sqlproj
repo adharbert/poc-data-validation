@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003" ToolsVersion="4.0">
   <PropertyGroup>
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
@@ -7,7 +7,7 @@
     <SchemaVersion>2.0</SchemaVersion>
     <ProjectVersion>4.1</ProjectVersion>
     <ProjectGuid>{4a866003-ca62-4df1-bcd3-605ee5f2c1bd}</ProjectGuid>
-    <DSP>Microsoft.Data.Tools.Schema.Sql.Sql150DatabaseSchemaProvider</DSP>
+    <DSP>Microsoft.Data.Tools.Schema.Sql.SqlAzureV12DatabaseSchemaProvider</DSP>
     <OutputType>Database</OutputType>
     <RootPath>
     </RootPath>
@@ -16,7 +16,6 @@
     <ModelCollation>1033, CI</ModelCollation>
     <DefaultFileStructure>BySchemaAndSchemaType</DefaultFileStructure>
     <DeployToDatabase>True</DeployToDatabase>
-    <TargetFrameworkVersion>v4.7.2</TargetFrameworkVersion>
     <TargetLanguage>CS</TargetLanguage>
     <AppDesignerFolder>Properties</AppDesignerFolder>
     <SqlServerVerification>False</SqlServerVerification>
@@ -62,10 +61,13 @@
     <Folder Include="dbo\Stored Procedures" />
     <Folder Include="dbo\Functions" />
     <Folder Include="scripts" />
+    <Folder Include="scripts\Migrations" />
     <Folder Include="scripts\Post-Deployment" />
     <Folder Include="scripts\Pre-Deployment" />
   </ItemGroup>
   <ItemGroup>
+    <!-- Schema objects — compiled into the DACPAC model -->
+    <Build Include="dbo\Tables\Contracts.sql" />
     <Build Include="dbo\Tables\Customers.sql" />
     <Build Include="dbo\Tables\FieldDefinitions.sql" />
     <Build Include="dbo\Tables\FieldOptions.sql" />
@@ -75,12 +77,26 @@
     <Build Include="dbo\Tables\FieldValuesHistory.sql" />
     <Build Include="dbo\Tables\ImportBatches.sql" />
     <Build Include="dbo\Tables\ImportColumnMappings.sql" />
+    <Build Include="dbo\Tables\ImportColumnStaging.sql" />
     <Build Include="dbo\Tables\ImportErrors.sql" />
     <Build Include="dbo\Tables\ImportValueMappings.sql" />
+    <Build Include="dbo\Tables\MarketingProjects.sql" />
     <Build Include="dbo\Tables\Organizations.sql" />
+    <Build Include="dbo\Tables\SavedColumnMappings.sql" />
     <Build Include="dbo\Tables\ValidationSessions.sql" />
-    <PostDeploy Include="scripts\Script.PostDeployment1.sql" />
     <Build Include="dbo\Views\vCustomerFieldValues.sql" />
+    <!-- Post-deployment script (runs automatically after DACPAC deploy) -->
+    <PostDeploy Include="scripts\Script.PostDeployment1.sql" />
+    <!-- Migration scripts — run manually; excluded from DACPAC schema model.
+         SuppressTSqlWarnings 71006: multiple DDL statements inside a single
+         TRY/CATCH block cannot use GO, but SSDT still validates <None> items. -->
+    <None Include="scripts\Migrations\Migration_001_CustomerOriginalId.sql">
+      <SuppressTSqlWarnings>71006</SuppressTSqlWarnings>
+    </None>
+    <None Include="scripts\Migrations\Migration_002_ImportBatches_AddColumns.sql">
+      <SuppressTSqlWarnings>71006</SuppressTSqlWarnings>
+    </None>
+    <!-- Reference / seed data scripts (not deployed automatically) -->
     <None Include="scripts\Post-Deployment\01_StateOptions.sql" />
     <None Include="scripts\Post-Deployment\02_HighestSchoolingOptions.sql" />
     <None Include="scripts\Post-Deployment\DEVOnly_03_Organizations-Fake.sql" />
