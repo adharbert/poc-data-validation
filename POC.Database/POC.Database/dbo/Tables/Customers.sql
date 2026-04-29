@@ -1,11 +1,13 @@
 CREATE TABLE [dbo].[Customers] (
 	[Id]					[uniqueidentifier]	NOT NULL	DEFAULT (newsequentialid()),
+	[OriginalId]			nvarchar(12)		NULL,
 	[FirstName]				nvarchar(30)		NOT NULL,
 	[LastName]				nvarchar(50)		NOT NULL,
 	[MiddleName]			nvarchar(30)		NULL,
 	[CustomerCode]			[nvarchar](26)		NOT NULL,
 	[OrganizationId]		[uniqueidentifier]	NOT NULL,
 	[Email]					nvarchar(150)		NULL,
+	[Phone]					nvarchar(11)		NULL,
 	[IsActive]				bit					NULL		DEFAULT(1),
 	[CreatedDt]				datetime			NOT NULL	DEFAULT(GETUTCDATE()),
 	[ModifiedDt]			datetime			NOT NULL	DEFAULT(GETUTCDATE()),
