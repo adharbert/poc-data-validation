@@ -9,7 +9,7 @@ public interface IOrganizationRepository
     /// </summary>
     /// <param name="includeInactive"></param>
     /// <returns>List of Organizations</returns>
-    Task<IEnumerable<Organization>> GetAllAsync(bool includeInactive = false);
+    Task<IEnumerable<Organization>> GetAllAsync(bool includeInactive = false, string? search = null);
 
     /// <summary>
     /// Get organization by organizationId.

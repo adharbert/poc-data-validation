@@ -5,7 +5,7 @@ import { orgApi, fieldApi, fieldOptionApi, customerApi, contractApi, projectApi,
 // Query key registry — always use these, never raw string arrays
 // ---------------------------------------------------------------------------
 export const QK = {
-  organizations:     (inactive = false)            => ['organizations', inactive],
+  organizations:     (inactive = false, search = null) => ['organizations', inactive, search ?? ''],
   organization:      (id)                          => ['organizations', id],
   fields:            (orgId, inactive = false)     => ['fields', orgId, inactive],
   fieldOptions:      (fieldId)                     => ['fieldOptions', fieldId],
@@ -26,8 +26,8 @@ export const QK = {
 // ---------------------------------------------------------------------------
 // Organizations
 // ---------------------------------------------------------------------------
-export const useOrganizations = (includeInactive = false) =>
-  useQuery({ queryKey: QK.organizations(includeInactive), queryFn: () => orgApi.getAll(includeInactive) })
+export const useOrganizations = (includeInactive = false, search = null) =>
+  useQuery({ queryKey: QK.organizations(includeInactive, search), queryFn: () => orgApi.getAll(includeInactive, search) })
 
 export const useOrganization = (id) =>
   useQuery({ queryKey: QK.organization(id), queryFn: () => orgApi.getById(id), enabled: !!id })

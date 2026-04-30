@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import {
@@ -9,7 +9,7 @@ import {
   PageHeader, LoadingState, ErrorAlert,
   StatusBadge, ConfirmModal, EmptyState, useToast,
 } from '@/components/common/index.jsx'
-import { fmtDate } from '@/utils/dates.js'
+import { fmtDate, fmtPhone, formatPhoneInput } from '@/utils/dates.js'
 
 function OrgModal({ org, onClose }) {
   const toast   = useToast()
@@ -17,14 +17,14 @@ function OrgModal({ org, onClose }) {
   const update  = useUpdateOrganization()
   const isEdit  = !!org
 
-  const { register, handleSubmit, formState: { errors } } = useForm({
+  const { register, handleSubmit, setValue, formState: { errors } } = useForm({
     defaultValues: {
       organizationName: org?.organizationName ?? '',
-      organizationCode: org?.organizationCode ?? '',
+      abbreviation:     org?.abbreviation     ?? '',
       marketingName:    org?.marketingName    ?? '',
       filingName:       org?.filingName       ?? '',
       website:          org?.website          ?? '',
-      phone:            org?.phone            ?? '',
+      phone:            fmtPhone(org?.phone) || '',
       companyEmail:     org?.companyEmail     ?? '',
     },
   })
@@ -64,11 +64,15 @@ function OrgModal({ org, onClose }) {
                   {errors.organizationName && <div className="invalid-feedback">{errors.organizationName.message}</div>}
                 </div>
                 <div className="col-4">
-                  <label className="form-label fw-semibold">Code <span className="text-danger">*</span></label>
-                  <input className={`form-control ${errors.organizationCode ? 'is-invalid' : ''}`}
-                    {...register('organizationCode', { required: 'Required' })}
-                    style={{ textTransform: 'uppercase' }} />
-                  {errors.organizationCode && <div className="invalid-feedback">{errors.organizationCode.message}</div>}
+                  <label className="form-label fw-semibold">Abbreviation <span className="text-danger">*</span></label>
+                  <input className={`form-control ${errors.abbreviation ? 'is-invalid' : ''}`}
+                    style={{ textTransform: 'uppercase' }}
+                    {...register('abbreviation', {
+                      required: 'Required',
+                      maxLength: { value: 4, message: 'Max 4 characters' },
+                      setValueAs: v => v?.toUpperCase(),
+                    })} />
+                  {errors.abbreviation && <div className="invalid-feedback">{errors.abbreviation.message}</div>}
                 </div>
                 <div className="col-6">
                   <label className="form-label">Marketing Name</label>
@@ -80,7 +84,8 @@ function OrgModal({ org, onClose }) {
                 </div>
                 <div className="col-6">
                   <label className="form-label">Phone</label>
-                  <input className="form-control" {...register('phone')} />
+                  <input className="form-control" {...register('phone')}
+                    onChange={e => { e.target.value = formatPhoneInput(e.target.value); setValue('phone', e.target.value) }} />
                 </div>
                 <div className="col-6">
                   <label className="form-label">Company Email</label>
@@ -111,8 +116,15 @@ export default function OrganizationsPage() {
   const [showCreate, setShowCreate] = useState(false)
   const [confirmId, setConfirmId]  = useState(null)
   const [targetStatus, setTargetStatus] = useState(null)
+  const [searchInput, setSearchInput]   = useState('')
+  const [search, setSearch]             = useState(null)
 
-  const { data: orgs, isLoading, isError } = useOrganizations(showInactive)
+  useEffect(() => {
+    const t = setTimeout(() => setSearch(searchInput.trim() || null), 350)
+    return () => clearTimeout(t)
+  }, [searchInput])
+
+  const { data: orgs, isLoading, isError } = useOrganizations(showInactive, search)
   const setStatus = useSetOrganizationStatus()
   const toast     = useToast()
 
@@ -142,6 +154,14 @@ export default function OrganizationsPage() {
         subtitle={`${orgs?.length ?? 0} organisation${orgs?.length !== 1 ? 's' : ''}`}
         actions={
           <>
+            <input
+              type="search"
+              className="form-control form-control-sm"
+              style={{ width: 220 }}
+              placeholder="Search organisations…"
+              value={searchInput}
+              onChange={e => setSearchInput(e.target.value)}
+            />
             <div className="form-check form-switch mb-0 me-2">
               <input className="form-check-input" type="checkbox" id="showInactive"
                 checked={showInactive} onChange={e => setShowInactive(e.target.checked)} />

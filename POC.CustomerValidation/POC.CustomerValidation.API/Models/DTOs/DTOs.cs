@@ -21,9 +21,7 @@ public record OrganizationDto(
 );
 
 public record CreateOrganizationRequest(
-    Guid    OrganizationId,
     string  OrganizationName,
-    string  OrganizationCode,
     string? FilingName,
     string? MarketingName,
     string? Abbreviation,
@@ -33,9 +31,8 @@ public record CreateOrganizationRequest(
 );
 
 public record UpdateOrganizationRequest(
-    Guid OrganizationId,
+    Guid    OrganizationId,
     string  OrganizationName,
-    string  OrganizationCode,
     string? FilingName,
     string? MarketingName,
     string? Abbreviation,

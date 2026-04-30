@@ -9,7 +9,7 @@ public interface IOrganizationServices
     /// </summary>
     /// <param name="includeInactive">boolean</param>
     /// <returns>IEnumerable of OrganizationDto</returns>
-    Task<IEnumerable<OrganizationDto>> GetAllAsync(bool includeInactive = false);
+    Task<IEnumerable<OrganizationDto>> GetAllAsync(bool includeInactive = false, string? search = null);
 
     /// <summary>
     /// Get organization details by its unique identifier (OrganizationId).

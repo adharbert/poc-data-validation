@@ -1,3 +1,4 @@
 <Solution>
   <Project Path="POC.CustomerValidation.API/POC.CustomerValidation.API.csproj" />
+  <Project Path="POC.CustomerValidation.Test/POC.CustomerValidation.Test.csproj" />
 </Solution>

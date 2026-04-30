@@ -9,6 +9,7 @@ import {
   PageHeader, LoadingState, ErrorAlert,
   StatusBadge, ConfirmModal, EmptyState, Pagination, useToast,
 } from '@/components/common/index.jsx'
+import { fmtPhone, formatPhoneInput } from '@/utils/dates.js'
 
 function CustomerModal({ orgId, customer, onClose }) {
   const toast  = useToast()
@@ -16,13 +17,13 @@ function CustomerModal({ orgId, customer, onClose }) {
   const update = useUpdateCustomer(orgId)
   const isEdit = !!customer
 
-  const { register, handleSubmit, formState: { errors } } = useForm({
+  const { register, handleSubmit, setValue, formState: { errors } } = useForm({
     defaultValues: {
       firstName:   customer?.firstName   ?? '',
       lastName:    customer?.lastName    ?? '',
       middleName:  customer?.middleName  ?? '',
       email:       customer?.email       ?? '',
-      phone:       customer?.phone       ?? '',
+      phone:       fmtPhone(customer?.phone) || '',
       originalId:  customer?.originalId  ?? '',
       isActive:    customer?.isActive    ?? true,
     },
@@ -80,7 +81,8 @@ function CustomerModal({ orgId, customer, onClose }) {
                 </div>
                 <div className="col-6">
                   <label className="form-label">Phone</label>
-                  <input className="form-control" {...register('phone')} />
+                  <input className="form-control" {...register('phone')}
+                    onChange={e => { e.target.value = formatPhoneInput(e.target.value); setValue('phone', e.target.value) }} />
                 </div>
                 <div className="col-12">
                   <label className="form-label">Client ID (Original ID)</label>

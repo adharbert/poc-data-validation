@@ -1,8 +1,7 @@
-﻿using POC.CustomerValidation.API.Interfaces;
+﻿using POC.CustomerValidation.API.Extensions;
+using POC.CustomerValidation.API.Interfaces;
 using POC.CustomerValidation.API.Models.DTOs;
 using POC.CustomerValidation.API.Models.Entites;
-using Serilog;
-using static Dapper.SqlMapper;
 
 namespace POC.CustomerValidation.API.Services;
 
@@ -12,13 +11,10 @@ public class OrganizationServices(IOrganizationRepository organizationRepository
 
 
 
-    public async Task<IEnumerable<OrganizationDto>> GetAllAsync(bool includeInactive = false)
+    public async Task<IEnumerable<OrganizationDto>> GetAllAsync(bool includeInactive = false, string? search = null)
     {
-        var orgs = await _repo.GetAllAsync(includeInactive);
-
-        // this call below is the equivalent of "orgs.Select(org => Map(org));"
+        var orgs = await _repo.GetAllAsync(includeInactive, string.IsNullOrWhiteSpace(search) ? null : search.Trim());
         return orgs.Select(Map);
-
     }
 
     public async Task<OrganizationDto?> GetByIdAsync(Guid organizationId)
@@ -29,14 +25,8 @@ public class OrganizationServices(IOrganizationRepository organizationRepository
 
     public async Task<OrganizationDto> CreateAsync(CreateOrganizationRequest request)
     {
-        // Make sure the organization doesn't already exist.
-        var existing = await _repo.GetByIdAsync(request.OrganizationId);
-        if (existing is not null)
-            throw new InvalidOperationException($"Organization with ID {request.OrganizationId} already exists.");
-        
         var org = Map(request);
         var newOrg = await _repo.CreateAsync(org);
-
         return Map(newOrg);
     }
 
@@ -65,7 +55,6 @@ public class OrganizationServices(IOrganizationRepository organizationRepository
     {
         return new Organization
         {
-            OrganizationId      = request.OrganizationId,
             OrganizationName    = request.OrganizationName,
             FilingName          = request.FilingName,
             MarketingName       = request.MarketingName,
@@ -73,8 +62,8 @@ public class OrganizationServices(IOrganizationRepository organizationRepository
             Website             = request.Website,
             Phone               = request.Phone,
             CompanyEmail        = request.CompanyEmail,
-            IsActive            = true, // New organizations are active by default
-        };        
+            IsActive            = true,
+        };
     }
 
 
@@ -102,12 +91,11 @@ public class OrganizationServices(IOrganizationRepository organizationRepository
     private static void MapToEntity(UpdateOrganizationRequest request, Organization org)
     {
         org.OrganizationName    = request.OrganizationName.Trim();
-        org.OrganizationCode    = request.OrganizationCode.Trim();
         org.FilingName          = request.FilingName?.Trim();
         org.MarketingName       = request.MarketingName?.Trim();
         org.Abbreviation        = request.Abbreviation?.Trim();
         org.Website             = request.Website?.Trim();
-        org.Phone               = request.Phone?.Trim();
+        org.Phone               = request.Phone?.ToDigitsOnly();
         org.CompanyEmail        = request.CompanyEmail?.Trim();
         org.IsActive            = request.IsActive ?? org.IsActive;
     }

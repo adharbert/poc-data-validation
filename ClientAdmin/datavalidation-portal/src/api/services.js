@@ -4,7 +4,7 @@ import api from './client.js'
 // Organizations  (American spelling — existing controller)
 // ---------------------------------------------------------------------------
 export const orgApi = {
-  getAll:       (includeInactive = false)           => api.get('/organizations', { params: { includeInactive } }).then(r => r.data),
+  getAll:       (includeInactive = false, search = null) => api.get('/organizations', { params: { includeInactive, ...(search ? { search } : {}) } }).then(r => r.data),
   getById:      (id)                                => api.get(`/organizations/${id}`).then(r => r.data),
   create:       (data)                              => api.post('/organizations', data).then(r => r.data),
   update:       (id, data)                          => api.put(`/organizations/${id}`, data).then(r => r.data),

@@ -11,7 +11,7 @@ public class OrganizationRepository(IDbConnectionFactory db) : IOrganizationRepo
     private readonly IDbConnectionFactory _db = db;
 
 
-    public async Task<IEnumerable<Organization>> GetAllAsync(bool includeInactive = false)
+    public async Task<IEnumerable<Organization>> GetAllAsync(bool includeInactive = false, string? search = null)
     {
         const string sql = """
             SELECT	Id as OrganizationId
@@ -30,11 +30,13 @@ public class OrganizationRepository(IDbConnectionFactory db) : IOrganizationRepo
             		,	ModifiedBy
             FROM	Organizations
             WHERE	(@IncludeInactive = 1 OR IsActive = 1)
+              AND	(@Search IS NULL OR Name LIKE '%' + @Search + '%'
+                                    OR Abbreviation LIKE '%' + @Search + '%'
+                                    OR OrganizationCode LIKE '%' + @Search + '%')
             ORDER	BY Name
         """;
         using var conn = _db.CreateConnection();
-        return await conn.QueryAsync<Organization>(sql, new { IncludeInactive = includeInactive });      
-
+        return await conn.QueryAsync<Organization>(sql, new { IncludeInactive = includeInactive, Search = search });
     }
 
     public async Task<Organization?> GetByIdAsync(Guid OrganizationId)
@@ -93,7 +95,9 @@ public class OrganizationRepository(IDbConnectionFactory db) : IOrganizationRepo
         organization.OrganizationCode   = Ulid.NewUlid().ToString();
         organization.CreatedDate        = DateTime.UtcNow;
         organization.ModifiedDate       = DateTime.UtcNow;
-        organization.Phone?.ToDigitsOnly();
+        organization.CreatedBy          = "System";
+        organization.ModifiedBy         = "System";
+        organization.Phone              = organization.Phone?.ToDigitsOnly();
 
         const string sql = """
                 INSERT INTO Organizations(Id, Name, FilingName, MarketingName, Abbreviation, OrganizationCode, Website, Phone, CompanyEmail, IsActive, CreateUtcDt, CreatedBy, ModifiedUtcDt, ModifiedBy)

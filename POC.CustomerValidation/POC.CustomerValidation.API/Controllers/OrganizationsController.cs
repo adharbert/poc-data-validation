@@ -24,10 +24,10 @@ public class OrganizationsController(IOrganizationServices services, ILogger<Org
     [HttpGet]
     [EndpointSummary("Organizations Get All")]
     [ProducesResponseType(typeof(IEnumerable<OrganizationDto>), StatusCodes.Status200OK)]
-    public async Task<IActionResult> GetAll([FromQuery] bool includeInactive = false)
+    public async Task<IActionResult> GetAll([FromQuery] bool includeInactive = false, [FromQuery] string? search = null)
     {
         _log.LogInformation("Request for OrganizationsController: GetAll");
-        var results = await _services.GetAllAsync(includeInactive);
+        var results = await _services.GetAllAsync(includeInactive, search);
         return Ok(results);
     }
 

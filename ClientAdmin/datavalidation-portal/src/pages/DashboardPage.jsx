@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useDashboardStats, useExpiringProjects } from '@/hooks/useApi.js'
 import { LoadingState, ErrorAlert } from '@/components/common/index.jsx'
@@ -40,6 +41,8 @@ function urgencyColor(days) {
 }
 
 export default function DashboardPage() {
+  const [orgSearch, setOrgSearch] = useState('')
+
   const { data: stats,    isLoading: statsLoading, isError } = useDashboardStats()
   const { data: expiring, isLoading: expiringLoading }       = useExpiringProjects()
 
@@ -49,6 +52,13 @@ export default function DashboardPage() {
   const totalCustomers   = stats?.organisationSummaries?.reduce((s, o) => s + (o.totalCustomers    ?? 0), 0) ?? 0
   const totalVerified    = stats?.organisationSummaries?.reduce((s, o) => s + (o.verifiedCustomers ?? 0), 0) ?? 0
   const overallPct       = totalCustomers > 0 ? Math.round((totalVerified / totalCustomers) * 100) : 0
+
+  const q = orgSearch.trim().toLowerCase()
+  const visibleOrgs = q
+    ? (stats?.organisationSummaries ?? []).filter(o =>
+        o.organisationName?.toLowerCase().includes(q)
+      )
+    : (stats?.organisationSummaries ?? [])
 
   return (
     <div>
@@ -83,11 +93,23 @@ export default function DashboardPage() {
         {/* Organisation comparison */}
         <div className="col-12 col-lg-7">
           <div className="admin-card">
-            <h2 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '1rem' }}>
-              Organization Overview
-            </h2>
+            <div className="d-flex justify-content-between align-items-center mb-3">
+              <h2 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: 0 }}>
+                Organization Overview
+              </h2>
+              <input
+                type="search"
+                className="form-control form-control-sm"
+                style={{ width: 200 }}
+                placeholder="Search…"
+                value={orgSearch}
+                onChange={e => setOrgSearch(e.target.value)}
+              />
+            </div>
             {!stats?.organisationSummaries?.length ? (
               <p className="text-muted-sm">No organisations found.</p>
+            ) : !visibleOrgs.length ? (
+              <p className="text-muted-sm">No organisations match "{orgSearch}".</p>
             ) : (
               <div className="table-wrap">
                 <table className="data-table">
@@ -100,7 +122,7 @@ export default function DashboardPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {stats.organisationSummaries.map(org => (
+                    {visibleOrgs.map(org => (
                       <tr key={org.organisationId}>
                         <td>
                           <Link
@@ -124,14 +146,14 @@ export default function DashboardPage() {
             )}
 
             {/* Bar chart: customers per org */}
-            {stats?.organisationSummaries?.length > 1 && (() => {
-              const maxC = Math.max(...stats.organisationSummaries.map(o => o.totalCustomers ?? 0))
+            {visibleOrgs.length > 1 && (() => {
+              const maxC = Math.max(...visibleOrgs.map(o => o.totalCustomers ?? 0))
               return maxC > 0 ? (
                 <div className="mt-4">
                   <div style={{ fontSize: '.8rem', fontWeight: 600, color: '#374151', marginBottom: '.5rem' }}>
                     Customer Distribution
                   </div>
-                  {stats.organisationSummaries.map(org => {
+                  {visibleOrgs.map(org => {
                     const pct    = maxC > 0 ? Math.round(((org.totalCustomers ?? 0) / maxC) * 100) : 0
                     const verPct = org.totalCustomers > 0 ? Math.round(((org.verifiedCustomers ?? 0) / org.totalCustomers) * 100) : 0
                     return (
