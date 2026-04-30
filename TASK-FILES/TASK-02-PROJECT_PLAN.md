@@ -32,8 +32,18 @@ Phased build plan. Completed phases are marked ✓.
 
 ### 1e — Dashboard ✓
 - `GET /api/dashboard/stats` + `GET /api/dashboard/expiring-projects`
-- `DashboardPage.jsx` — stat cards, org summary table, expiring projects list
+- `DashboardPage.jsx` — global stat cards (Active Orgs, Expiring Projects, Total Customers, Overall Verified %),
+  org comparison table with verification progress bars, customer distribution bar chart, expiring projects list
 - Route: `/dashboard`
+
+### 1f — Organisation Detail Page ✓
+- No new API endpoints needed — reuses `useOrganization`, `useContracts`, `useProjects`, `useDashboardStats`, `useCustomers`
+- `OrgDetailPage.jsx` — org info header, per-org stat cards, validation progress bar,
+  contracts timeline with urgency colours, marketing projects with timeline progress bars,
+  nav tiles linking to sub-pages (Customers, Inputs, Import, Staging)
+- Route: `/organizations/:organizationId`
+- Sub-pages (Customers, Inputs, Import, Staging) show 3-level breadcrumb:
+  Organisations → Org name → Current page
 
 ---
 

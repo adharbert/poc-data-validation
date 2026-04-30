@@ -11,15 +11,19 @@ The following have been fully built (API + Admin SPA):
 | Feature | Notes |
 |---|---|
 | Organisations CRUD | List, create, edit, activate/deactivate |
-| Field Definitions (Inputs) | Full CRUD, type-aware modal, options management |
+| Organisation Detail Page | Per-org stats, contracts + projects timelines, validation progress, nav tiles |
+| Field Definitions (Inputs) | Full CRUD, type-aware modal (incl. phone + display format), options management |
+| Phone field type | Stored as digits only; rendered via configurable `DisplayFormat` |
 | Field Sections | Create/edit/reorder/assign, drag-and-drop in Inputs page |
 | Form Preview | Admin selects customer → reads form with live values |
 | Customers | Paginated list, create/edit/activate/deactivate |
 | Contracts | Per-org, single active constraint enforced |
 | Marketing Projects | Per-org, multiple active allowed |
-| Dashboard | Stat cards, org summary table, expiring projects list |
+| Dashboard | Global stat cards, org comparison chart, expiring projects list |
 | Import (5-step wizard) | Upload CSV/Excel, column mapping, value mapping, preview, execute |
 | Import Staging | Resolve unmatched columns post-import |
+| Breadcrumb navigation | All sub-pages show Organisations → Org name → Page breadcrumb |
+| Consistent date formatting | All dates display as MM/dd/yyyy via shared `fmtDate()` util |
 | Serilog sinks | Console always on; DB sinks (InformationLogs/ErrorLogs) toggled by config |
 | SVG logo | PCI logo in sidebar; collapses to icon when sidebar is collapsed |
 
@@ -77,6 +81,7 @@ PUT  /api/portal/sessions/{sessionId}/complete  Mark session as complete
 | `boolean` | Toggle / checkbox |
 | `dropdown` | `<select>` populated from FieldOptions |
 | `multiselect` | Checkbox list from FieldOptions |
+| `phone` | Read-only formatted display (digits stored, `displayFormat` controls rendering) |
 
 ### Scaffold steps
 ```bash
@@ -125,7 +130,7 @@ App Roles (define on API registration):
 | No file size limit on import | API should reject files over a configurable max (e.g. 10 MB). |
 | No async import progress | Import executes synchronously. Large files need a background job + polling endpoint. |
 | Abbreviation not required on create | Org can be created without Abbreviation. Import will fail later — warn on org form. |
-| No customer detail page | CustomersPage rows have no drill-down yet. |
+| No customer detail page | CustomersPage rows have no drill-down yet — API already exists (`GET /api/customers/{id}/values`). |
 
 ---
 
@@ -139,4 +144,5 @@ App Roles (define on API registration):
 5. Post-Deployment/04_Migration_ImportTables.sql            -- import + staging tables
 6. Post-Deployment/05_Contract_3CFDCADA.sql                 -- seed contract for ADX org
 7. Post-Deployment/06_MarketingProject_ADX.sql              -- seed project for ADX org
+8. scripts/Migrations/Migration_003_FieldDefinitions_Phone.sql  -- adds DisplayFormat column
 ```

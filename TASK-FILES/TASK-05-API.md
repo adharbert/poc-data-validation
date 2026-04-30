@@ -1,8 +1,8 @@
 # API Endpoints
 
-Base URL: `https://localhost:7017`
-Interactive docs: `https://localhost:7017/scalar/v1`
-OpenAPI JSON: `https://localhost:7017/openapi/v1.json`
+Base URL: `https://localhost:7124`
+Interactive docs: `https://localhost:7124/scalar/v1`
+OpenAPI JSON: `https://localhost:7124/openapi/v1.json`
 
 All endpoints return `application/json`.
 Error responses follow the shape: `{ code: string, message: string }`.
@@ -130,11 +130,16 @@ Create a new field definition.
   "maxValue": null,
   "minLength": null,
   "maxLength": null,
-  "regexPattern": null
+  "regexPattern": null,
+  "displayFormat": null
 }
 ```
 
-**Valid fieldType values:** `text`, `number`, `date`, `datetime`, `checkbox`, `dropdown`, `multiselect`
+**Valid fieldType values:** `text`, `number`, `date`, `datetime`, `boolean`, `checkbox`, `dropdown`, `multiselect`, `phone`
+
+**`displayFormat`** — only used when `fieldType` is `phone`. Controls how stored digits are rendered.
+Valid values: `"(XXX) XXX-XXXX"`, `"XXX-XXX-XXXX"`, `"XXX.XXX.XXXX"`. Null for all other field types.
+Phone values are always stored as digits only (non-digits stripped on import).
 
 **Response:** `201 Created` — `FieldDefinitionDto`
 **Response:** `400 Bad Request`

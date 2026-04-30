@@ -65,7 +65,7 @@ server: {
   port: 5173,
   proxy: {
     '/api': {
-      target: 'https://localhost:7017',
+      target: 'https://localhost:7124',
       changeOrigin: true,
       secure: false       // self-signed dev cert
     }
@@ -97,13 +97,16 @@ src/
 │       └── AppLayout.jsx  ← sidebar + topbar
 ├── hooks/
 │   └── useApi.js          ← React Query hooks
-└── pages/
-    ├── DashboardPage.jsx
-    ├── OrganizationsPage.jsx
-    ├── CustomersPage.jsx
-    ├── InputsPage.jsx
-    ├── ImportPage.jsx
-    └── ImportStagingPage.jsx
+├── pages/
+│   ├── DashboardPage.jsx
+│   ├── OrganizationsPage.jsx
+│   ├── OrgDetailPage.jsx  ← org landing: stats, contracts, projects, nav tiles
+│   ├── CustomersPage.jsx
+│   ├── InputsPage.jsx
+│   ├── ImportPage.jsx
+│   └── ImportStagingPage.jsx
+└── utils/
+    └── dates.js           ← fmtDate(str) → MM/dd/yyyy  |  fmtPhone(str) → XXX.XXX.XXXX
 ```
 
 ---
@@ -201,6 +204,7 @@ Routes are defined in `App.jsx` as children of `<AppLayout />`:
   <Route index element={<Navigate to="/dashboard" replace />} />
   <Route path="dashboard"                                          element={<DashboardPage />} />
   <Route path="organizations"                                      element={<OrganizationsPage />} />
+  <Route path="organizations/:organizationId"                      element={<OrgDetailPage />} />
   <Route path="organizations/:organizationId/customers"            element={<CustomersPage />} />
   <Route path="organizations/:organizationId/inputs"               element={<InputsPage />} />
   <Route path="organizations/:organizationId/import"               element={<ImportPage />} />
@@ -208,18 +212,32 @@ Routes are defined in `App.jsx` as children of `<AppLayout />`:
 </Route>
 ```
 
-The sidebar shows per-org sub-navigation (Customers, Inputs, Import, Staging) when any
+The sidebar shows per-org sub-navigation (Overview, Customers, Inputs, Import, Staging) when any
 `/organizations/:organizationId/...` route is active. The `orgId` is read from `useParams`
-in `AppLayout` to decide whether to render the sub-nav.
+in `AppLayout` to decide whether to render the sub-nav. The Overview link uses `end` prop so
+it only matches the exact org detail route, not all sub-routes.
+
+Sub-pages (Customers, Inputs, Import, Staging) all show a 3-level breadcrumb:
+**Organisations → [Org Name] → [Current Page]** — the org name link navigates to `OrgDetailPage`.
+Each sub-page calls `useOrganization(organizationId)` to get the org name for the breadcrumb.
 
 ---
 
 ## Existing Pages
 
 ### DashboardPage (`/dashboard`)
-- Stat cards: Active Organisations, Active Projects, Total Customers, Verified Customers
-- Organisation summary table: name, customer count, verified count, active projects
-- Expiring projects alert list (projects within 30-day window of `MarketingEndDate`)
+- Global stat cards: Active Organisations, Expiring Projects count, Total Customers, Overall Verified %
+- Organisation comparison table: name, customer count, verification progress bar, active projects count — org name links to OrgDetailPage
+- Customer distribution bar chart (shown when > 1 org): stacked bars show total vs verified per org
+- Expiring projects list (projects within configured warning window of `MarketingEndDate`)
+
+### OrgDetailPage (`/organizations/:organizationId`)
+- Per-org stat cards: Total Customers, Verified (with % complete), Active Projects, Status
+- Validation progress bar across all customers for this org
+- Contracts section: timeline list with start/end dates, urgency colouring (red ≤7d, amber ≤30d, green)
+- Marketing Projects section: timeline list with progress bars showing elapsed time
+- Navigation tiles linking to Customers, Inputs, Import, Staging sub-pages
+- Phone number displayed as `XXX.XXX.XXXX` via `fmtPhone()`
 
 ### OrganizationsPage (`/organizations`)
 - Table of all organisations with name, code, active status, created date
@@ -242,11 +260,11 @@ in `AppLayout` to decide whether to render the sub-nav.
 - "Unassigned" group at bottom for fields with no section
 - **New Section modal** — name, display order, plus checkbox list to assign unassigned fields on creation
 - **Edit Section modal** — name and display order; activate/deactivate button on the card
-- **New/Edit Input (field) modal** — all field properties plus a section dropdown for assignment
+- **New/Edit Input (field) modal** — all field properties; includes phone display format dropdown when `fieldType = 'phone'`
 - **Field Options modal** — manage dropdown/multiselect option values with bulk save
 - Activate/deactivate for both sections and fields (soft-delete, data retained for reporting)
 - **Form Preview panel** — collapsible, select any customer to see a read-only rendered form
-  with their current saved values, grouped by section
+  with their current saved values, grouped by section; phone fields formatted per `displayFormat`
 
 ### ImportPage (`/organizations/:organizationId/import`)
 - 5-step import wizard: Upload → Column Mapping → Value Mapping → Preview → Execute
@@ -286,10 +304,10 @@ Custom CSS classes:
 - `.stat-card` — dashboard stat card with icon slot
 - `.data-table` — borderless table with hover rows
 - `.badge-active` / `.badge-inactive` — status pills
-- `.badge-type` — field type pills (colour per type)
+- `.badge-type` — field type pills (colour per type); includes `.badge-phone`
 - `.badge-status` — import batch status pills
 - `.drag-handle` — grab cursor for sortable rows
-- `.breadcrumb-bar` — breadcrumb navigation
+- `.breadcrumb-bar` — breadcrumb navigation (Organisations → Org → Page)
 - `.empty-state` — centred no-data state
 - `.page-header` — title + actions row
 - `.wizard-steps` — import wizard step indicator
@@ -300,6 +318,10 @@ Custom CSS classes:
 - `.section-empty-hint` — placeholder text for empty sections
 - `.section-field-pick-list` / `.section-field-pick-item` — checkbox list in Section modal
 - `.preview-form-wrap` / `.preview-section` / `.preview-section-title` — Form Preview panel
+- `.org-stat-card` / `.org-stat-icon` / `.org-stat-body` / `.org-stat-label` / `.org-stat-value` / `.org-stat-sub` — OrgDetailPage stat cards
+- `.org-section-title` — section heading inside OrgDetailPage cards
+- `.org-timeline-list` / `.org-timeline-item` — contracts + projects timeline rows
+- `.org-nav-tiles` / `.org-nav-tile` / `.org-nav-tile-icon` / `.org-nav-tile-label` / `.org-nav-tile-desc` — navigation tile grid
 
 ---
 

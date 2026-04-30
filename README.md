@@ -100,10 +100,11 @@ A new row in `FieldDefinitions` is all it takes.
 
 | Feature | Admin SPA route | Notes |
 |---|---|---|
-| Dashboard | `/dashboard` | Stat cards, org summary, expiring projects |
+| Dashboard | `/dashboard` | Global stat cards, org comparison chart, expiring projects |
 | Organizations CRUD | `/organizations` | Create, edit, activate/deactivate |
+| Organisation Detail | `/organizations/:id` | Per-org stats, contracts, projects timeline, nav tiles |
 | Field Sections | `/organizations/:id/inputs` | Part of Inputs page |
-| Field Definitions (Inputs) | `/organizations/:id/inputs` | CRUD, type-aware, options, drag-and-drop |
+| Field Definitions (Inputs) | `/organizations/:id/inputs` | CRUD, type-aware (incl. phone), options, drag-and-drop |
 | Form Preview | `/organizations/:id/inputs` | Admin selects customer, sees live form |
 | Customers | `/organizations/:id/customers` | Paginated list, create/edit/activate/deactivate |
 | Contracts | (within org context) | Per-org, single active constraint |
@@ -183,10 +184,13 @@ poc-data-validation/
 │       │   ├── pages/
 │       │   │   ├── DashboardPage.jsx
 │       │   │   ├── OrganizationsPage.jsx
+│       │   │   ├── OrgDetailPage.jsx           ← org landing: stats, contracts, projects
 │       │   │   ├── CustomersPage.jsx
 │       │   │   ├── InputsPage.jsx              ← sections + fields + preview
 │       │   │   ├── ImportPage.jsx
 │       │   │   └── ImportStagingPage.jsx
+│       │   ├── utils/
+│       │   │   └── dates.js                    ← fmtDate (MM/dd/yyyy) + fmtPhone
 │       │   ├── App.jsx
 │       │   └── main.jsx
 │       ├── package.json
@@ -278,6 +282,7 @@ profile to allow iterative schema changes).
 | 5 | `04_Migration_ImportTables.sql` | Import + staging tables |
 | 6 | `05_Contract_3CFDCADA.sql` | Seed contract for ADX org |
 | 7 | `06_MarketingProject_ADX.sql` | Seed marketing project for ADX org |
+| 8 | `Migration_003_FieldDefinitions_Phone.sql` | Adds `DisplayFormat` column to `FieldDefinitions` |
 
 Scripts are idempotent — safe to re-run. Each checks for existing data before inserting.
 
@@ -297,9 +302,9 @@ Organizations
     ├── FieldSections          (OrganizationId FK)
     │       └── FieldDefinitions (FieldSectionId FK, nullable)
     │               ├── FieldOptions
-    │               └── FieldValues ◄──────────────────┐
+    │               └── FieldValues ◄───────────────────┐
     ├── Customers                                       │
-    │       └── FieldValues (CustomerId + FieldId FK)──┘
+    │       └── FieldValues (CustomerId + FieldId FK)───┘
     ├── Contracts
     ├── MarketingProjects
     └── ImportBatches
@@ -376,6 +381,21 @@ Never use the old constructor-injection style.
 The `FieldDefinitions` table has a column named `DsiplayOrder` (not `DisplayOrder`).
 The typo is established in the production database. Always reference it as `DsiplayOrder`
 in all SQL and entity/DTO mappings.
+
+### Phone field type
+`FieldDefinitions.FieldType` supports `'phone'` as a valid value. The import pipeline
+strips all non-digit characters before storing (`Regex.Replace(value, @"\D", "")`).
+The `DisplayFormat` column controls how the stored digits are rendered:
+`(XXX) XXX-XXXX`, `XXX-XXX-XXXX`, or `XXX.XXX.XXXX`.
+
+### Dapper `DateOnly` type handler
+Dapper has no built-in support for C# `DateOnly`. A `SqlMapper.TypeHandler<DateOnly>`
+is registered at startup in `DependencyInjectionSetup.cs`. Never remove it — without it,
+any `DateOnly` property on a Dapper-mapped entity will throw `InvalidCastException` at runtime.
+
+### Date formatting — frontend
+All date displays in the admin SPA use `fmtDate()` from `src/utils/dates.js`, which always
+outputs `MM/dd/yyyy`. Never use raw `toLocaleDateString()` in page components.
 
 ---
 
