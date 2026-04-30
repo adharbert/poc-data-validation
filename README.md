@@ -117,14 +117,18 @@ A new row in `FieldDefinitions` is all it takes.
 | Phone field type | `/organizations/:id/inputs` | Stored as digits; live `(XXX) XXX-XXXX` masking on input |
 | Breadcrumb navigation | all sub-pages | Organisations → Org name → Current page |
 | Consistent date formatting | — | All dates via `fmtDate()` — MM/dd/yyyy |
+| Number display formatting | — | `fmtNumber()` strips trailing zeros — `42.00` → `42`, `3.14` → `3.14` |
 | Serilog config | — | DB sinks toggled per environment via appsettings |
 | Unit test suite | — | `POC.CustomerValidation.Test` — 142 xUnit tests, all 10 controllers, ≥ 90% coverage |
+| Customer Addresses | — | `CustomerAddresses` table (temporal), address history, Melissa validation stub, confirm endpoint |
 
 ### Remaining
 
 | Feature | Notes |
 |---|---|
 | Customer detail page | Drill-down from customers list — API already exists |
+| Address UI | Admin form for creating/editing customer addresses — backend ready |
+| Melissa integration | `MelissaService` is a stub — wire up real REST API when credentials available |
 | Customer Validation Portal | Separate Vite app in `ClientPortal/` — not yet scaffolded |
 | Authentication | Azure AD (admin) + magic-link (customer portal) |
 

@@ -33,7 +33,7 @@ public class ContractsController(IContractService service, ILogger<ContractsCont
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetById(Guid organisationId, Guid contractId)
     {
-        _log.LogInformation("GetById contract {ContractId}", contractId);
+        _log.LogInformation($"GetById contract Id: {contractId} for organization Id {organisationId}");
         var result = await _service.GetByIdAsync(contractId);
         return result is null ? NotFound() : Ok(result);
     }
@@ -58,7 +58,7 @@ public class ContractsController(IContractService service, ILogger<ContractsCont
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> Update(Guid organisationId, Guid contractId, [FromBody] UpdateContractRequest request)
     {
-        _log.LogInformation("Update contract {ContractId}", contractId);
+        _log.LogInformation($"Update contract {contractId} for organisation {organisationId}");
         var result = await _service.UpdateAsync(contractId, request);
         return Ok(result);
     }
@@ -71,7 +71,7 @@ public class ContractsController(IContractService service, ILogger<ContractsCont
     [ProducesResponseType(typeof(ApiError), StatusCodes.Status409Conflict)]
     public async Task<IActionResult> SetStatus(Guid organisationId, Guid contractId, [FromBody] SetStatusRequest request)
     {
-        _log.LogInformation("SetStatus contract {ContractId} → {IsActive}", contractId, request.IsActive);
+        _log.LogInformation($"SetStatus contract {contractId} → {request.IsActive} for organisation {organisationId}");
         await _service.ChangeStatusAsync(contractId, request.IsActive, request.ModifiedBy);
         return NoContent();
     }

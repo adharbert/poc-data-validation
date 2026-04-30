@@ -104,6 +104,15 @@
     <None Include="scripts\Migrations\Migration_003_FieldDefinitions_Phone.sql">
       <SuppressTSqlWarnings>71006</SuppressTSqlWarnings>
     </None>
+    <None Include="scripts\Migrations\Migration_004_CustomerAddresses.sql">
+      <SuppressTSqlWarnings>71006</SuppressTSqlWarnings>
+    </None>
+    <None Include="scripts\Post-Deployment\05_Contract_3CFDCADA.sql">
+      <SuppressTSqlWarnings>71006</SuppressTSqlWarnings>
+    </None>
+    <None Include="scripts\Post-Deployment\06_MarketingProject_ADX.sql">
+      <SuppressTSqlWarnings>71006</SuppressTSqlWarnings>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <None Include="POC.Database.publish.xml" />

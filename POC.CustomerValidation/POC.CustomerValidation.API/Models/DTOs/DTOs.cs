@@ -564,6 +564,52 @@ public record ResolveColumnStagingRequest
 }
 
 
+// -------------------------------------------------------
+// Customer Address DTOs
+// -------------------------------------------------------
+
+public record CustomerAddressDto
+{
+    public Guid     AddressId           { get; init; }
+    public Guid     CustomerId          { get; init; }
+    public string   AddressLine1        { get; init; } = default!;
+    public string?  AddressLine2        { get; init; }
+    public string   City                { get; init; } = default!;
+    public string   State               { get; init; } = default!;
+    public string   PostalCode          { get; init; } = default!;
+    public string   Country             { get; init; } = "US";
+    public bool     MelissaValidated    { get; init; }
+    public bool     CustomerConfirmed   { get; init; }
+    public bool     IsCurrent           { get; init; }
+    public DateTime CreatedUtcDt        { get; init; }
+    public DateTime ModifiedUtcDt       { get; init; }
+}
+
+public record CreateCustomerAddressRequest
+{
+    public string   AddressLine1    { get; init; } = default!;
+    public string?  AddressLine2    { get; init; }
+    public string   City            { get; init; } = default!;
+    public string   State           { get; init; } = default!;
+    public string   PostalCode      { get; init; } = default!;
+    public string   Country         { get; init; } = "US";
+}
+
+// -------------------------------------------------------
+// Melissa address-validation result
+// -------------------------------------------------------
+
+public record MelissaValidationResult
+{
+    public bool     IsValid         { get; init; }
+    public string   AddressLine1    { get; init; } = default!;
+    public string?  AddressLine2    { get; init; }
+    public string   City            { get; init; } = default!;
+    public string   State           { get; init; } = default!;
+    public string   PostalCode      { get; init; } = default!;
+}
+
+
 
 
 

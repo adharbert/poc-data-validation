@@ -587,6 +587,82 @@ Activate or deactivate a customer.
 
 ---
 
+## Customer Addresses
+
+Address history per customer. Every address change is preserved —
+`IsCurrent` marks the live address. `POST` replaces the current address
+(retires the old one) rather than updating it in-place.
+
+Melissa address validation is called automatically on every `POST`.
+The stub implementation always returns `MelissaValidated = false` until
+real credentials are wired in — see `Services/MelissaService.cs`.
+
+### GET /api/customers/{customerId}/addresses
+List all addresses for a customer, newest first (full history).
+
+**Response:** `200 OK` — array of `CustomerAddressDto`
+
+---
+
+### GET /api/customers/{customerId}/addresses/current
+Get the customer's current address.
+
+**Response:** `200 OK` — `CustomerAddressDto`
+**Response:** `404 Not Found` — no address on record
+
+---
+
+### POST /api/customers/{customerId}/addresses
+Add a new address. The previous current address is retired (`IsCurrent` set to `0`).
+The address is submitted to Melissa for validation before saving — if Melissa confirms
+it, the standardised form is stored and `MelissaValidated` is set to `true`.
+
+**Body:**
+```json
+{
+  "addressLine1": "123 Main St",
+  "addressLine2": null,
+  "city": "Springfield",
+  "state": "IL",
+  "postalCode": "62701",
+  "country": "US"
+}
+```
+
+**Response:** `201 Created` — `CustomerAddressDto`
+**Response:** `404 Not Found` — customer not found
+
+---
+
+### PATCH /api/customers/{customerId}/addresses/{addressId}/confirm
+Customer confirms the address is correct. Sets `CustomerConfirmed = true`.
+
+**Response:** `200 OK` — `CustomerAddressDto`
+**Response:** `404 Not Found`
+
+---
+
+### CustomerAddressDto
+```json
+{
+  "addressId": "guid",
+  "customerId": "guid",
+  "addressLine1": "123 Main St",
+  "addressLine2": null,
+  "city": "Springfield",
+  "state": "IL",
+  "postalCode": "62701",
+  "country": "US",
+  "melissaValidated": false,
+  "customerConfirmed": false,
+  "isCurrent": true,
+  "createdUtcDt": "2026-04-30T00:00:00Z",
+  "modifiedUtcDt": "2026-04-30T00:00:00Z"
+}
+```
+
+---
+
 ## Dashboard
 
 ### GET /api/dashboard/stats

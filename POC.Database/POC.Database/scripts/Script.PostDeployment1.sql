@@ -57,7 +57,7 @@ GO
 --GO
 --:r .\Post-Deployment\02_HighestSchoolingOptions.sql
 --GO
---:r .\Post-Deployment\DEVOnly_03_Organizations-Fake.sql
---GO
+:r .\Migrations\Migration_004_CustomerAddresses.sql
+GO
 
 PRINT 'PostDeploy completed successfully.';

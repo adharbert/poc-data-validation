@@ -453,3 +453,25 @@ public class FieldPreviewRaw
     public DateOnly? ValueDate          { get; set; }
     public bool?    ValueBoolean        { get; set; }
 }
+
+
+public interface ICustomerAddressRepository
+{
+    /// <summary>Returns all addresses for a customer, newest first (history).</summary>
+    Task<IEnumerable<CustomerAddress>> GetByCustomerIdAsync(Guid customerId);
+
+    /// <summary>Returns the current address for a customer, or null.</summary>
+    Task<CustomerAddress?> GetCurrentAsync(Guid customerId);
+
+    /// <summary>Returns a single address by Id.</summary>
+    Task<CustomerAddress?> GetByIdAsync(Guid addressId);
+
+    /// <summary>
+    /// Marks all existing addresses for the customer as IsCurrent=0,
+    /// then inserts the new address as IsCurrent=1.
+    /// </summary>
+    Task<CustomerAddress> CreateAsync(CustomerAddress address);
+
+    /// <summary>Sets CustomerConfirmed=true on the given address.</summary>
+    Task<bool> ConfirmAsync(Guid addressId);
+}

@@ -19,7 +19,10 @@ Organizations
     │                                                          │
     ├── Customers                                              │
     │       │                                                  │
-    │       └── FieldValues (CustomerId FK, FieldDefinitionId FK)
+    │       ├── FieldValues (CustomerId FK, FieldDefinitionId FK)
+    │       │
+    │       └── CustomerAddresses (CustomerId FK)
+    │               └── CustomerAddresses_History  (temporal)
     │
     └── ImportBatches
             │
@@ -301,6 +304,43 @@ HeaderFingerprint` for automatic reuse on future uploads.
 | UseCount | INT | Incremented each use |
 
 ---
+
+---
+
+## CustomerAddresses
+
+Tracks every address a customer has ever had.
+`IsCurrent = 1` is the live address; all prior rows remain in history.
+When a customer moves, the old row flips to `IsCurrent = 0` and a new
+row is inserted with `IsCurrent = 1`.
+
+Uses SQL Server **temporal tables** — identical pattern to `Customers`.
+
+| Column | Type | Notes |
+|---|---|---|
+| Id | UNIQUEIDENTIFIER | PK, `NEWSEQUENTIALID()` |
+| CustomerId | UNIQUEIDENTIFIER | FK → Customers |
+| AddressLine1 | NVARCHAR(200) | Melissa-standardised when validated |
+| AddressLine2 | NVARCHAR(100) | NULL |
+| City | NVARCHAR(100) | |
+| State | CHAR(2) | |
+| PostalCode | VARCHAR(10) | ZIP or ZIP+4 |
+| Country | CHAR(2) | Default `US` |
+| MelissaValidated | BIT | 1 = Melissa confirmed this is a real, deliverable address |
+| CustomerConfirmed | BIT | 1 = customer confirmed this is their correct address |
+| IsCurrent | BIT | 1 = active address for this customer |
+| CreatedUtcDt | DATETIME2 | |
+| ModifiedUtcDt | DATETIME2 | |
+| ValidFrom | DATETIME2 | Temporal — hidden, auto-managed |
+| ValidTo | DATETIME2 | Temporal — hidden, auto-managed |
+
+**History table:** `CustomerAddresses_History` — created automatically by SQL Server temporal versioning.
+
+**Index:** `IX_CustomerAddresses_CustomerId_IsCurrent` on `(CustomerId, IsCurrent)` — fast current-address lookup.
+
+**Migration:** `scripts/Migrations/Migration_004_CustomerAddresses.sql`
+
+**Mailer eligibility:** rows where `MelissaValidated = 1 AND CustomerConfirmed = 1`.
 
 ---
 

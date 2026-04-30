@@ -29,6 +29,9 @@ The following have been fully built (API + Admin SPA):
 | Serilog sinks | Console always on; DB sinks (InformationLogs/ErrorLogs) toggled by config |
 | SVG logo | PCI logo in sidebar; collapses to icon when sidebar is collapsed |
 | Unit test suite | `POC.CustomerValidation.Test` — 142 xUnit tests, all 10 controllers, ≥ 90% coverage |
+| Customer Addresses | `CustomerAddresses` table (temporal), full address history per customer, `IsCurrent` flag |
+| Melissa stub | `IMelissaService` + stub wired into address create flow — sets `MelissaValidated` when real API is connected |
+| Number display fix | `fmtNumber()` in `src/utils/dates.js` — strips trailing zeros (`42.00` → `42`, `3.14` → `3.14`) |
 
 ---
 
@@ -134,6 +137,8 @@ App Roles (define on API registration):
 | No async import progress | Import executes synchronously. Large files need a background job + polling endpoint. |
 | Abbreviation not required on create | Org can be created without Abbreviation. Import will fail later — warn on org form. |
 | No customer detail page | CustomersPage rows have no drill-down yet — API already exists (`GET /api/customers/{id}/values`). |
+| Melissa not connected | `MelissaService` is a stub — always returns `IsValid=false`. Wire up real Melissa REST API when credentials available. |
+| No address UI | Admin SPA has no address form on the customer create/edit modal yet. |
 
 ---
 

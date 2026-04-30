@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { fmtNumber } from '@/utils/dates.js'
 import { useParams } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import {
@@ -467,7 +468,7 @@ function PreviewPanel({ organizationId }) {
     if (field.fieldType === 'date')
       return <input type="date" {...baseProps} value={val} />
     if (field.fieldType === 'number')
-      return <input type="number" {...baseProps} value={val} />
+      return <input type="number" {...baseProps} value={fmtNumber(val)} />
     if (field.fieldType === 'phone')
       return <input type="text" {...baseProps} value={formatPhone(val, field.displayFormat)} />
     if (field.fieldType === 'dropdown') {

@@ -1,3 +1,10 @@
+// Strips trailing decimal zeros: "42.00" → "42", "3.14" → "3.14"
+export function fmtNumber(val) {
+  if (val === '' || val === null || val === undefined) return ''
+  const num = Number(val)
+  return isNaN(num) ? String(val) : String(num)
+}
+
 export function fmtDate(dateStr) {
   if (!dateStr) return '—'
   const d = new Date(dateStr)

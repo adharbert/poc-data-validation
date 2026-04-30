@@ -259,3 +259,35 @@ public interface IDashboardService
     /// <summary>Returns active projects approaching their end date.</summary>
     Task<IEnumerable<ExpiringProjectDto>> GetExpiringProjectsAsync(int warningDays);
 }
+
+
+public interface ICustomerAddressService
+{
+    /// <summary>Returns all addresses for a customer, newest first.</summary>
+    Task<IEnumerable<CustomerAddressDto>> GetAllAsync(Guid customerId);
+
+    /// <summary>Returns the customer's current address, or null.</summary>
+    Task<CustomerAddressDto?> GetCurrentAsync(Guid customerId);
+
+    /// <summary>
+    /// Validates the address via Melissa, then saves it as the customer's
+    /// current address (previous address is preserved in history).
+    /// </summary>
+    Task<CustomerAddressDto> CreateAsync(Guid customerId, CreateCustomerAddressRequest request);
+
+    /// <summary>Marks the address as confirmed by the customer.</summary>
+    Task<CustomerAddressDto> ConfirmAsync(Guid customerId, Guid addressId);
+}
+
+
+public interface IMelissaService
+{
+    /// <summary>
+    /// Submits an address to Melissa for verification and standardisation.
+    /// Returns the result including whether the address is valid and the
+    /// standardised components. Never throws — returns IsValid=false on failure.
+    /// </summary>
+    Task<MelissaValidationResult> ValidateAsync(
+        string addressLine1, string? addressLine2,
+        string city, string state, string postalCode, string country = "US");
+}
