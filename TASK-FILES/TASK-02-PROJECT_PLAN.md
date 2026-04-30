@@ -160,7 +160,6 @@ Two app registrations needed:
 
 | Item | Priority | Notes |
 |---|---|---|
-| `DsiplayOrder` typo | Never fix | Established in DB — always use `DsiplayOrder` in SQL |
 | No file size limit on import | Low | Reject files over 10 MB in `ImportController` |
 | No async import progress | Low | Import is sync; large files need background job + polling |
 | Abbreviation not required on create | Low | Warn on org form when navigating to import |

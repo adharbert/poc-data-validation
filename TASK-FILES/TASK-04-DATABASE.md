@@ -15,7 +15,7 @@ Organizations
     │               │
     │               ├── FieldOptions     (FieldDefinitionId FK)
     │               │
-    │               └── FieldValues ◄────────────────────────┐
+    │               └── FieldValues ◄──────────────────────────┐
     │                                                          │
     ├── Customers                                              │
     │       │                                                  │
