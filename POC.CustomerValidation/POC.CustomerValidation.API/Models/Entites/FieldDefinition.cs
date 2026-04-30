@@ -4,7 +4,7 @@ public class FieldDefinition
 {
     public Guid     FieldDefinitionId   { get; set; }
     public Guid     OrganizationId      { get; set; }
-    public Guid     FieldSectionId      { get; set; }
+    public Guid?    FieldSectionId      { get; set; }
     public string   FieldKey            { get; set; } = default!;
     public string   FieldLabel          { get; set; } = default!;
     public string   FieldType           { get; set; } = default!;
@@ -18,6 +18,7 @@ public class FieldDefinition
     public int?     MinLength           { get; set; }
     public int?     MaxLength           { get; set; }
     public string?  RegexPattern        { get; set; }
+    public string?  DisplayFormat       { get; set; }
     public DateTime CreatedDt           { get; set; }
     public DateTime ModifiedDt          { get; set; }
 }

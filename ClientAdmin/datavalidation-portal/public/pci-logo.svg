@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 447 100" role="img" aria-label="PCI — not the big company">
+  <!-- White background so logo reads correctly on any surface -->
+  <rect x="0" y="0" width="447" height="100" fill="#ffffff"/>
+
+  <!-- Red square -->
+  <rect x="0" y="0" width="100" height="100" fill="#d4232b"/>
+
+  <!-- PCI lettering -->
+  <text x="50" y="69"
+        font-family="Impact, 'Arial Black', Arial, sans-serif"
+        font-size="46"
+        font-weight="900"
+        fill="#ffffff"
+        text-anchor="middle"
+        dominant-baseline="auto">PCI</text>
+
+  <!-- Tagline: "not the big" red, "company" black, vertically centred -->
+  <text x="116" y="62"
+        font-family="Arial, Helvetica, sans-serif"
+        font-size="27"
+        font-weight="700"
+        dominant-baseline="middle">
+    <tspan fill="#d4232b">not the big </tspan><tspan fill="#1a1a1a">company</tspan>
+  </text>
+</svg>

@@ -9,16 +9,24 @@ const NAV_ITEMS = [
 function OrgSubNav({ orgId }) {
   return (
     <div className="sidebar-sub">
-      <NavLink to={`/organizations/${orgId}/customers`}    className={({isActive}) => `sidebar-link ${isActive ? 'active' : ''}`}>
+      <NavLink to={`/organizations/${orgId}`} end
+        className={({isActive}) => `sidebar-link ${isActive ? 'active' : ''}`}>
+        <span className="nav-icon">🏠</span><span className="nav-label">Overview</span>
+      </NavLink>
+      <NavLink to={`/organizations/${orgId}/customers`}
+        className={({isActive}) => `sidebar-link ${isActive ? 'active' : ''}`}>
         <span className="nav-icon">👥</span><span className="nav-label">Customers</span>
       </NavLink>
-      <NavLink to={`/organizations/${orgId}/fields`}       className={({isActive}) => `sidebar-link ${isActive ? 'active' : ''}`}>
-        <span className="nav-icon">🗂️</span><span className="nav-label">Field Definitions</span>
+      <NavLink to={`/organizations/${orgId}/inputs`}
+        className={({isActive}) => `sidebar-link ${isActive ? 'active' : ''}`}>
+        <span className="nav-icon">🗂️</span><span className="nav-label">Inputs</span>
       </NavLink>
-      <NavLink to={`/organizations/${orgId}/import`}       className={({isActive}) => `sidebar-link ${isActive ? 'active' : ''}`}>
+      <NavLink to={`/organizations/${orgId}/import`}
+        className={({isActive}) => `sidebar-link ${isActive ? 'active' : ''}`}>
         <span className="nav-icon">📥</span><span className="nav-label">Import</span>
       </NavLink>
-      <NavLink to={`/organizations/${orgId}/import-staging`} className={({isActive}) => `sidebar-link ${isActive ? 'active' : ''}`}>
+      <NavLink to={`/organizations/${orgId}/import-staging`}
+        className={({isActive}) => `sidebar-link ${isActive ? 'active' : ''}`}>
         <span className="nav-icon">🔧</span><span className="nav-label">Staging</span>
       </NavLink>
     </div>
@@ -31,7 +39,8 @@ function usePageTitle() {
   if (pathname.includes('/import-staging'))  return 'Import Staging'
   if (pathname.includes('/import'))          return 'Import'
   if (pathname.includes('/customers'))       return 'Customers'
-  if (pathname.includes('/fields'))          return 'Field Definitions'
+  if (pathname.includes('/inputs'))          return 'Inputs'
+  if (/\/organizations\/[^/]+$/.test(pathname)) return 'Organization Overview'
   if (pathname.startsWith('/organizations')) return 'Organizations'
   if (pathname.startsWith('/dashboard'))     return 'Dashboard'
   return 'Admin Portal'
@@ -48,8 +57,10 @@ export default function AppLayout() {
       {/* Sidebar */}
       <aside className={`sidebar ${collapsed ? 'collapsed' : ''}`}>
         <a className="sidebar-brand" href="/dashboard">
-          <span className="brand-icon">✅</span>
-          {!collapsed && <span className="brand-text">DataValidation</span>}
+          {collapsed
+            ? <img src="/pci-logo.svg" alt="PCI" className="brand-logo-icon" />
+            : <img src="/pci-logo.svg" alt="PCI — not the big company" className="brand-logo-full" />
+          }
         </a>
 
         <nav className="sidebar-nav">

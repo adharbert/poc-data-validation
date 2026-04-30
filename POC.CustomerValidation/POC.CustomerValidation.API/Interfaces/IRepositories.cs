@@ -85,13 +85,14 @@ public interface IFieldSectionRepository
     /// <returns>Boolean</returns>
     Task<bool> UpdateAsync(FieldSection fieldSection);
 
-    /// <summary>
-    /// Delete existing Field Section.  It will return true if the deletion is successful, otherwise false.  It will return false if the field section does not exist or if there is an error during the deletion process.
-    /// </summary>
-    /// <param name="sectionId">Guid</param>
-    /// <returns>Boolean</returns>
+    /// <summary>Soft-deletes (deactivates) a field section.</summary>
     Task<bool> DeleteAsync(Guid sectionId);
 
+    /// <summary>Activates or deactivates a field section.</summary>
+    Task<bool> ChangeStatusAsync(Guid sectionId, bool isActive);
+
+    /// <summary>Bulk-updates DisplayOrder for a set of sections.</summary>
+    Task<bool> ReorderAsync(IEnumerable<(Guid SectionId, int DisplayOrder)> updates);
 }
 
 
@@ -149,12 +150,14 @@ public interface IFieldDefinitionRepository
     /// <returns>Boolean</returns>
     Task<bool> ChangeStatusAsync(Guid FieldDefinitionId, bool IsActive);
 
-    /// <summary>
-    /// Reorder field definitions. Returns true if the reordering is successful.
-    /// </summary>
-    /// <param name="updates">IEnumerable list of Guid and Int</param>
-    /// <returns>Boolean</returns>
+    /// <summary>Reorder field definitions.</summary>
     Task<bool> ReorderAsync(IEnumerable<(Guid FieldDefinitionId, int DisplayOrder)> updates);
+
+    /// <summary>Bulk-assigns a section (or null to unassign) and sets display order for a set of fields.</summary>
+    Task<bool> BulkAssignSectionAsync(Guid? sectionId, IEnumerable<(Guid FieldId, int DisplayOrder)> assignments);
+
+    /// <summary>Gets all active fields for an org joined with their section and current field values for a customer.</summary>
+    Task<IEnumerable<FieldPreviewRaw>> GetPreviewAsync(Guid organizationId, Guid customerId);
 }
 
 
@@ -430,4 +433,23 @@ public class ExpiringProjectRow
     public string   OrganisationName    { get; set; } = default!;
     public DateOnly MarketingEndDate    { get; set; }
     public int      DaysUntilExpiry     { get; set; }
+}
+
+public class FieldPreviewRaw
+{
+    public Guid     FieldDefinitionId   { get; set; }
+    public Guid?    SectionId           { get; set; }
+    public string?  SectionName         { get; set; }
+    public int      SectionDisplayOrder { get; set; }
+    public string   FieldKey            { get; set; } = default!;
+    public string   FieldLabel          { get; set; } = default!;
+    public string   FieldType           { get; set; } = default!;
+    public string?  HelpText            { get; set; }
+    public bool     IsRequired          { get; set; }
+    public int      DisplayOrder        { get; set; }
+    public string?  DisplayFormat       { get; set; }
+    public string?  ValueText           { get; set; }
+    public decimal? ValueNumber         { get; set; }
+    public DateOnly? ValueDate          { get; set; }
+    public bool?    ValueBoolean        { get; set; }
 }

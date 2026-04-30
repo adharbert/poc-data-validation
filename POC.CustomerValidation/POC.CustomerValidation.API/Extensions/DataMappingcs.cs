@@ -27,6 +27,7 @@ namespace POC.CustomerValidation.API.Extensions
             field.MinLength     = request.MinLength;
             field.MaxLength     = request.MaxLength;
             field.RegexPattern  = request.RegexPattern;
+            field.DisplayFormat = request.DisplayFormat;
             field.ModifiedDt    = DateTime.UtcNow;
         }
 

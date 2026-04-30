@@ -9,6 +9,7 @@ import {
   PageHeader, LoadingState, ErrorAlert,
   StatusBadge, ConfirmModal, EmptyState, useToast,
 } from '@/components/common/index.jsx'
+import { fmtDate } from '@/utils/dates.js'
 
 function OrgModal({ org, onClose }) {
   const toast   = useToast()
@@ -32,14 +33,14 @@ function OrgModal({ org, onClose }) {
     try {
       if (isEdit) {
         await update.mutateAsync({ id: org.organizationId, data: values })
-        toast('Organisation updated.')
+        toast('Organization updated.')
       } else {
         await create.mutateAsync(values)
-        toast('Organisation created.')
+        toast('Organization created.')
       }
       onClose()
     } catch (err) {
-      toast(err.message ?? 'Error saving organisation.', 'danger')
+      toast(err.message ?? 'Error saving Organization.', 'danger')
     }
   }
 
@@ -51,13 +52,13 @@ function OrgModal({ org, onClose }) {
         <div className="modal-content">
           <form onSubmit={handleSubmit(onSubmit)}>
             <div className="modal-header">
-              <h5 className="modal-title">{isEdit ? 'Edit Organisation' : 'New Organisation'}</h5>
+              <h5 className="modal-title">{isEdit ? 'Edit Organization' : 'New Organization'}</h5>
               <button type="button" className="btn-close" onClick={onClose} />
             </div>
             <div className="modal-body">
               <div className="row g-3">
                 <div className="col-8">
-                  <label className="form-label fw-semibold">Organisation Name <span className="text-danger">*</span></label>
+                  <label className="form-label fw-semibold">Organization Name <span className="text-danger">*</span></label>
                   <input className={`form-control ${errors.organizationName ? 'is-invalid' : ''}`}
                     {...register('organizationName', { required: 'Required' })} />
                   {errors.organizationName && <div className="invalid-feedback">{errors.organizationName.message}</div>}
@@ -173,7 +174,7 @@ export default function OrganizationsPage() {
                 {orgs.map(org => (
                   <tr key={org.organizationId}>
                     <td className="fw-semibold">
-                      <Link to={`/organizations/${org.organizationId}/customers`}
+                      <Link to={`/organizations/${org.organizationId}`}
                         className="text-decoration-none" style={{ color: '#1a56db' }}>
                         {org.organizationName}
                       </Link>
@@ -181,7 +182,7 @@ export default function OrganizationsPage() {
                     <td><code className="text-muted-sm">{org.organizationCode}</code></td>
                     <td className="text-muted-sm">{org.marketingName ?? '—'}</td>
                     <td><StatusBadge active={org.isActive} /></td>
-                    <td className="text-muted-sm">{org.createdDate ? new Date(org.createdDate).toLocaleDateString() : '—'}</td>
+                    <td className="text-muted-sm">{fmtDate(org.createdDate)}</td>
                     <td>
                       <div className="gap-actions justify-content-end">
                         <div className="dropdown">
@@ -189,8 +190,9 @@ export default function OrganizationsPage() {
                             Actions
                           </button>
                           <ul className="dropdown-menu dropdown-menu-end">
+                            <li><Link className="dropdown-item" to={`/organizations/${org.organizationId}`}>🏠 Overview</Link></li>
                             <li><Link className="dropdown-item" to={`/organizations/${org.organizationId}/customers`}>👥 Customers</Link></li>
-                            <li><Link className="dropdown-item" to={`/organizations/${org.organizationId}/fields`}>🗂️ Fields</Link></li>
+                            <li><Link className="dropdown-item" to={`/organizations/${org.organizationId}/inputs`}>🗂️ Inputs</Link></li>
                             <li><Link className="dropdown-item" to={`/organizations/${org.organizationId}/import`}>📥 Import</Link></li>
                             <li><hr className="dropdown-divider" /></li>
                             <li><button className="dropdown-item" onClick={() => setEditOrg(org)}>✏️ Edit</button></li>

@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { orgApi, fieldApi, fieldOptionApi, customerApi, contractApi, projectApi, dashboardApi, importApi, stagingApi } from '@/api/services.js'
+import { orgApi, fieldApi, fieldOptionApi, customerApi, contractApi, projectApi, dashboardApi, importApi, stagingApi, sectionApi } from '@/api/services.js'
 
 // ---------------------------------------------------------------------------
 // Query key registry — always use these, never raw string arrays
@@ -18,6 +18,9 @@ export const QK = {
   importBatch:       (orgId, batchId)              => ['importBatch', orgId, batchId],
   savedMappings:     (orgId, fingerprint)          => ['savedMappings', orgId, fingerprint],
   staging:           (orgId, status)               => ['staging', orgId, status],
+  sections:          (orgId)                       => ['sections', orgId],
+  section:           (orgId, sectionId)            => ['sections', orgId, sectionId],
+  formPreview:       (orgId, customerId)           => ['formPreview', orgId, customerId],
 }
 
 // ---------------------------------------------------------------------------
@@ -195,6 +198,62 @@ export const useSetProjectStatus = (orgId) => {
     onSuccess:  () => qc.invalidateQueries({ queryKey: QK.projects(orgId) }),
   })
 }
+
+// ---------------------------------------------------------------------------
+// Field Sections
+// ---------------------------------------------------------------------------
+export const useSections = (orgId) =>
+  useQuery({ queryKey: QK.sections(orgId), queryFn: () => sectionApi.getAll(orgId), enabled: !!orgId })
+
+export const useCreateSection = (orgId) => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data) => sectionApi.create(orgId, data),
+    onSuccess:  () => qc.invalidateQueries({ queryKey: QK.sections(orgId) }),
+  })
+}
+
+export const useUpdateSection = (orgId) => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ sectionId, data }) => sectionApi.update(orgId, sectionId, data),
+    onSuccess:  () => qc.invalidateQueries({ queryKey: QK.sections(orgId) }),
+  })
+}
+
+export const useSetSectionStatus = (orgId) => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ sectionId, isActive }) => sectionApi.setStatus(orgId, sectionId, isActive),
+    onSuccess:  () => qc.invalidateQueries({ queryKey: QK.sections(orgId) }),
+  })
+}
+
+export const useReorderSections = (orgId) => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (sections) => sectionApi.reorder(orgId, sections),
+    onSuccess:  () => qc.invalidateQueries({ queryKey: QK.sections(orgId) }),
+  })
+}
+
+export const useAssignFieldsToSection = (orgId) => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ sectionId, fields }) => sectionApi.assignFields(orgId, sectionId, fields),
+    onSuccess:  () => {
+      qc.invalidateQueries({ queryKey: QK.sections(orgId) })
+      qc.invalidateQueries({ queryKey: ['fields', orgId] })
+    },
+  })
+}
+
+export const useFormPreview = (orgId, customerId) =>
+  useQuery({
+    queryKey: QK.formPreview(orgId, customerId),
+    queryFn:  () => sectionApi.formPreview(orgId, customerId),
+    enabled:  !!orgId && !!customerId,
+  })
 
 // ---------------------------------------------------------------------------
 // Dashboard

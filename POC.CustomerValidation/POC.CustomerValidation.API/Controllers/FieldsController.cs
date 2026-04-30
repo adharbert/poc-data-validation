@@ -70,14 +70,14 @@ public class FieldsController(IFieldDefinitionService services, ILogger<FieldsCo
     /// </summary>
     /// <param name="request">UpdateFieldDefinitionRequest</param>
     /// <returns>FieldDefinitionDto</returns>
-    [HttpPut]
+    [HttpPut("{fieldId:guid}")]
     [EndpointSummary("FieldDefinition PUT update existing field")]
     [ProducesResponseType(typeof(FieldDefinitionDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<IActionResult> Update([FromBody] UpdateFieldDefinitionRequest request)
+    public async Task<IActionResult> Update(Guid fieldId, [FromBody] UpdateFieldDefinitionRequest request)
     {
-        _log.LogInformation($"Update existing field definition. Id: {request.FieldDefinitionId}");
-        var field = await _services.UpdateAsync(request);
+        _log.LogInformation($"Update existing field definition. Id: {fieldId}");
+        var field = await _services.UpdateAsync(request with { FieldDefinitionId = fieldId });
         return Ok(field);
     }
 

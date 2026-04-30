@@ -113,18 +113,18 @@ BEGIN TRY
         (@FD_FullTime, @OrgId, @SectionEmployment, 'full_time',         'Currently Employed Full Time',  'checkbox',   NULL,               'Check if you are currently employed full time.',     0, 1, 10, NULL, NULL, NULL, NULL, NULL)
     ) AS source (
         Id, OrganizationId, FieldSectionId, FieldKey, FieldLabel, FieldType,
-        PlaceHolderText, HelpText, IsRequired, IsActive, DsiplayOrder,
+        PlaceHolderText, HelpText, IsRequired, IsActive, DisplayOrder,
         MinValue, MaxValue, MinLength, MaxLength, RegExPattern
     )
         ON target.[OrganizationId] = source.OrganizationId
        AND target.[FieldKey]       = source.FieldKey
     WHEN NOT MATCHED BY TARGET THEN
         INSERT ([Id], [OrganizationId], [FieldSectionId], [FieldKey], [FieldLabel], [FieldType],
-                [PlaceHolderText], [HelpText], [IsRequired], [IsActive], [DsiplayOrder],
+                [PlaceHolderText], [HelpText], [IsRequired], [IsActive], [DisplayOrder],
                 [MinValue], [MaxValue], [MinLength], [MaxLength], [RegExPattern])
         VALUES (source.Id, source.OrganizationId, source.FieldSectionId, source.FieldKey,
                 source.FieldLabel, source.FieldType, source.PlaceHolderText, source.HelpText,
-                source.IsRequired, source.IsActive, source.DsiplayOrder,
+                source.IsRequired, source.IsActive, source.DisplayOrder,
                 source.MinValue, source.MaxValue, source.MinLength, source.MaxLength, source.RegExPattern);
 
     -- Re-resolve Ids in case some already existed before the merge

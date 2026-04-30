@@ -10,7 +10,9 @@ import {
   StatusBadge, ConfirmModal, EmptyState, useToast,
 } from '@/components/common/index.jsx'
 
-const FIELD_TYPES = ['text', 'number', 'date', 'dropdown', 'multiselect', 'boolean']
+const FIELD_TYPES = ['text', 'number', 'date', 'dropdown', 'multiselect', 'boolean', 'phone']
+
+const PHONE_FORMATS = ['(XXX) XXX-XXXX', 'XXX-XXX-XXXX', 'XXX.XXX.XXXX']
 
 function FieldModal({ organizationId, field, onClose }) {
   const toast  = useToast()
@@ -26,10 +28,12 @@ function FieldModal({ organizationId, field, onClose }) {
       fieldType:      field?.fieldType      ?? 'text',
       isRequired:     field?.isRequired     ?? false,
       helpText:       field?.helpText       ?? '',
-      validationRegex:field?.validationRegex ?? '',
+      regexPattern:   field?.regexPattern   ?? '',
       minValue:       field?.minValue       ?? '',
       maxValue:       field?.maxValue       ?? '',
       displayOrder:   field?.displayOrder   ?? '',
+      displayFormat:  field?.displayFormat  ?? PHONE_FORMATS[0],
+      isActive:       field?.isActive       ?? true,
     },
   })
 
@@ -39,13 +43,14 @@ function FieldModal({ organizationId, field, onClose }) {
   async function onSubmit(values) {
     const payload = {
       ...values,
-      minValue:     values.minValue     === '' ? null : Number(values.minValue),
-      maxValue:     values.maxValue     === '' ? null : Number(values.maxValue),
-      displayOrder: values.displayOrder === '' ? null : Number(values.displayOrder),
+      minValue:      values.minValue      === '' ? null : Number(values.minValue),
+      maxValue:      values.maxValue      === '' ? null : Number(values.maxValue),
+      displayOrder:  values.displayOrder  === '' ? null : Number(values.displayOrder),
+      displayFormat: values.fieldType === 'phone' ? values.displayFormat : null,
     }
     try {
       if (isEdit) {
-        await update.mutateAsync({ fieldId: field.fieldId, data: payload })
+        await update.mutateAsync({ fieldId: field.fieldDefinitionId, data: payload })
         toast('Field updated.')
       } else {
         await create.mutateAsync(payload)
@@ -107,7 +112,7 @@ function FieldModal({ organizationId, field, onClose }) {
                 {fieldType === 'text' && (
                   <div className="col-12">
                     <label className="form-label">Validation Regex</label>
-                    <input className="form-control font-monospace" {...register('validationRegex')}
+                    <input className="form-control font-monospace" {...register('regexPattern')}
                       placeholder="e.g. ^\d{5}$" />
                   </div>
                 )}
@@ -122,6 +127,15 @@ function FieldModal({ organizationId, field, onClose }) {
                       <input type="number" className="form-control" {...register('maxValue')} />
                     </div>
                   </>
+                )}
+                {fieldType === 'phone' && (
+                  <div className="col-12">
+                    <label className="form-label fw-semibold">Display Format</label>
+                    <select className="form-select" {...register('displayFormat')}>
+                      {PHONE_FORMATS.map(f => <option key={f} value={f}>{f}</option>)}
+                    </select>
+                    <div className="form-text">Digits are always stored without formatting. This controls how the number is displayed.</div>
+                  </div>
                 )}
                 {(fieldType === 'dropdown' || fieldType === 'multiselect') && (
                   <div className="col-12">
@@ -242,7 +256,7 @@ export default function FieldDefinitionsPage() {
     <div>
       <PageHeader
         breadcrumbs={[
-          { label: 'Organisations', href: '/organizations' },
+          { label: 'Organizations', href: '/organizations' },
           { label: 'Field Definitions' },
         ]}
         title="Field Definitions"

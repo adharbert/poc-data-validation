@@ -1,4 +1,6 @@
-﻿using POC.CustomerValidation.API.Interfaces;
+﻿using System.Data;
+using Dapper;
+using POC.CustomerValidation.API.Interfaces;
 using POC.CustomerValidation.API.Persistence;
 using POC.CustomerValidation.API.Persistence.Repositories;
 using POC.CustomerValidation.API.Services;
@@ -9,6 +11,9 @@ public static class DependencyInjectionSetup
 {
     public static IServiceCollection RegisterServices(this IServiceCollection services, IConfiguration configuration)
     {
+        // Dapper type handlers — register once at startup ----------------------
+        SqlMapper.AddTypeHandler(new DateOnlyTypeHandler());
+
         // Database Dapper configuration ----------------------------------------
         services.AddSingleton<IDbConnectionFactory>(
             new SqlConnectionFactory(configuration.GetConnectionString("DefaultConnection")!)
@@ -30,6 +35,7 @@ public static class DependencyInjectionSetup
 
         // Services DI  ---------------------------------------------------------
         services.AddScoped<IOrganizationServices,               OrganizationServices>();
+        services.AddScoped<IFieldSectionService,                FieldSectionService>();
         services.AddScoped<IFieldDefinitionService,             FieldDefinitionService>();
         services.AddScoped<IFieldOptionService,                 FieldOptionService>();
         services.AddScoped<IFieldValueService,                  FieldValueService>();
@@ -42,4 +48,16 @@ public static class DependencyInjectionSetup
 
         return services;
     }
+}
+
+file sealed class DateOnlyTypeHandler : SqlMapper.TypeHandler<DateOnly>
+{
+    public override void SetValue(IDbDataParameter parameter, DateOnly value)
+    {
+        parameter.DbType = DbType.Date;
+        parameter.Value  = value.ToDateTime(TimeOnly.MinValue);
+    }
+
+    public override DateOnly Parse(object value)
+        => DateOnly.FromDateTime(Convert.ToDateTime(value));
 }

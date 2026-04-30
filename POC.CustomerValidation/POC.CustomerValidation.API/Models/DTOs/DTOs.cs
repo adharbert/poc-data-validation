@@ -74,6 +74,63 @@ public record UpdateFieldSectionRequest(
 
 public record ReorderFieldRequest(Guid FieldDefinitionId, int DisplayOrder);
 
+public record ReorderSectionsRequest
+{
+    public IEnumerable<SectionOrderItem> Sections { get; init; } = [];
+}
+
+public record SectionOrderItem
+{
+    public Guid SectionId    { get; init; }
+    public int  DisplayOrder { get; init; }
+}
+
+public record AssignFieldsToSectionRequest
+{
+    public IEnumerable<SectionFieldAssignment> Fields { get; init; } = [];
+}
+
+public record SectionFieldAssignment
+{
+    public Guid FieldDefinitionId { get; init; }
+    public int  DisplayOrder      { get; init; }
+}
+
+// -------------------------------------------------------
+// Form Preview DTOs
+// -------------------------------------------------------
+
+public record CustomerFormPreviewDto
+{
+    public Guid                                 CustomerId      { get; init; }
+    public string                               CustomerName    { get; init; } = default!;
+    public IEnumerable<SectionPreviewDto>       Sections        { get; init; } = [];
+    public IEnumerable<FieldPreviewItemDto>     UnassignedFields { get; init; } = [];
+}
+
+public record SectionPreviewDto
+{
+    public Guid                             SectionId       { get; init; }
+    public string                           SectionName     { get; init; } = default!;
+    public int                              DisplayOrder    { get; init; }
+    public IEnumerable<FieldPreviewItemDto> Fields          { get; init; } = [];
+}
+
+public record FieldPreviewItemDto
+{
+    public Guid     FieldDefinitionId   { get; init; }
+    public Guid?    SectionId           { get; init; }
+    public string   FieldKey            { get; init; } = default!;
+    public string   FieldLabel          { get; init; } = default!;
+    public string   FieldType           { get; init; } = default!;
+    public string?  HelpText            { get; init; }
+    public bool     IsRequired          { get; init; }
+    public int      DisplayOrder        { get; init; }
+    public string?  CurrentValue        { get; init; }
+    public string?  DisplayFormat       { get; init; }
+    public IEnumerable<FieldOptionDto>  Options { get; init; } = [];
+}
+
 // -------------------------------------------------------
 // Field Definitions
 // -------------------------------------------------------
@@ -96,6 +153,7 @@ public record FieldDefinitionDto(
     int?        MinLength,
     int?        MaxLength,
     string?     RegexPattern,
+    string?     DisplayFormat,
     IEnumerable<FieldOptionDto> Options
 );
 
@@ -115,7 +173,8 @@ public record CreateFieldDefinitionRequest(
     decimal?    MaxValue        = null,
     int?        MinLength       = null,
     int?        MaxLength       = null,
-    string?     RegexPattern    = null
+    string?     RegexPattern    = null,
+    string?     DisplayFormat   = null
 );
 
 
@@ -133,7 +192,8 @@ public record UpdateFieldDefinitionRequest(
     decimal?    MaxValue,
     int?        MinLength,
     int?        MaxLength,
-    string?     RegexPattern
+    string?     RegexPattern,
+    string?     DisplayFormat
 );
 
 

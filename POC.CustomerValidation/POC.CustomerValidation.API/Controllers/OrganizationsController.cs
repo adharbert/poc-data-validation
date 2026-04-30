@@ -38,7 +38,7 @@ public class OrganizationsController(IOrganizationServices services, ILogger<Org
     /// </summary>
     /// <param name="organizationId"></param>
     /// <returns></returns>
-    [HttpGet("organizationId:guid")]
+    [HttpGet("{organizationId:guid}")]
     [EndpointSummary("Organization Get by Id")]
     [ProducesResponseType(typeof(OrganizationDto), StatusCodes.Status200OK)]
     public async Task<IActionResult> GetById(Guid organizationId)

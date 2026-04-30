@@ -2,11 +2,13 @@ import { useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import {
+  useOrganization,
   useStagingColumns, useResolveStaging, useDeleteStaging,
 } from '@/hooks/useApi.js'
 import {
   PageHeader, LoadingState, ErrorAlert, ConfirmModal, EmptyState, useToast,
 } from '@/components/common/index.jsx'
+import { fmtDate } from '@/utils/dates.js'
 
 const STATUS_OPTS = [
   { value: '',          label: 'All'       },
@@ -125,6 +127,7 @@ function ResolveModal({ orgId, staging, onClose }) {
 
 export default function ImportStagingPage() {
   const { organizationId } = useParams()
+  const { data: org } = useOrganization(organizationId)
   const [statusFilter, setStatusFilter] = useState('')
   const [resolveItem, setResolveItem]   = useState(null)
   const [deleteId, setDeleteId]         = useState(null)
@@ -154,6 +157,7 @@ export default function ImportStagingPage() {
       <PageHeader
         breadcrumbs={[
           { label: 'Organisations', href: '/organizations' },
+          { label: org?.organizationName ?? '…', href: `/organizations/${organizationId}` },
           { label: 'Import Staging' },
         ]}
         title="Import Column Staging"
@@ -219,8 +223,8 @@ export default function ImportStagingPage() {
                         : s.status === 'skipped' ? <em>Skipped</em> : '—'}
                     </td>
                     <td className="text-muted-sm">{s.seenCount}×</td>
-                    <td className="text-muted-sm">{s.firstSeenAt ? new Date(s.firstSeenAt).toLocaleDateString() : '—'}</td>
-                    <td className="text-muted-sm">{s.lastSeenAt ? new Date(s.lastSeenAt).toLocaleDateString() : '—'}</td>
+                    <td className="text-muted-sm">{fmtDate(s.firstSeenAt)}</td>
+                    <td className="text-muted-sm">{fmtDate(s.lastSeenAt)}</td>
                     <td>
                       <div className="gap-actions justify-content-end">
                         <button className="btn btn-sm btn-outline-primary" onClick={() => setResolveItem(s)}>

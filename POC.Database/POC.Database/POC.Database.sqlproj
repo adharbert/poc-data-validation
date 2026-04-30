@@ -101,6 +101,9 @@
     <None Include="scripts\Post-Deployment\02_HighestSchoolingOptions.sql" />
     <None Include="scripts\Post-Deployment\DEVOnly_03_Organizations-Fake.sql" />
     <None Include="scripts\Post-Deployment\DevOnly_04_CustomerSampleData.sql" />
+    <None Include="scripts\Migrations\Migration_003_FieldDefinitions_Phone.sql">
+      <SuppressTSqlWarnings>71006</SuppressTSqlWarnings>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <None Include="POC.Database.publish.xml" />

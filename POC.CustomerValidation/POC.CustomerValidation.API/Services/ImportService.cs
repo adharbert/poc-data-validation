@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using ClosedXML.Excel;
 using CsvHelper;
 using POC.CustomerValidation.API.Interfaces;
@@ -257,11 +258,16 @@ public class ImportService(
 
                 foreach (var (fieldDefId, value) in fieldValues)
                 {
+                    var fieldDef = fieldDefs.GetValueOrDefault(fieldDefId);
+                    var storedValue = fieldDef?.FieldType == "phone"
+                        ? Regex.Replace(value ?? string.Empty, @"\D", "")
+                        : value;
+
                     await fieldValueRepo.UpsertAsync(new FieldValue
                     {
                         CustomerId          = existing.CustomerId,
                         FieldDefinitionId   = fieldDefId,
-                        ValueText           = value,
+                        ValueText           = storedValue,
                         CreatedDt           = DateTime.UtcNow,
                         ModifiedDt          = DateTime.UtcNow,
                     });

@@ -80,12 +80,22 @@ public interface IFieldDefinitionService
     /// <param name="isActive">Boolean</param>
     Task SetStatusAsync(Guid fieldDefinitionId, bool isActive);
     
-    /// <summary>
-    /// Reorder field definitions asynchronously based on the specified organizationId and updates.
-    /// </summary>
-    /// <param name="organizationId">Guid</param>
-    /// <param name="updates">IEnumerable of tuples containing fieldDefinitionId and displayOrder</param>
+    /// <summary>Reorder field definitions.</summary>
     Task ReorderAsync(Guid organizationId, IEnumerable<(Guid fieldDefinitionId, int displayOrder)> updates);
+
+    /// <summary>Returns all active fields for the org grouped by section with the customer's current values.</summary>
+    Task<CustomerFormPreviewDto> GetFormPreviewAsync(Guid organizationId, Guid customerId);
+}
+
+public interface IFieldSectionService
+{
+    Task<IEnumerable<FieldSectionDto>> GetByOrganizationIdAsync(Guid organizationId);
+    Task<FieldSectionDto?> GetByIdAsync(Guid sectionId);
+    Task<FieldSectionDto> CreateAsync(Guid organizationId, CreateFieldSectionRequest request);
+    Task<FieldSectionDto> UpdateAsync(Guid sectionId, UpdateFieldSectionRequest request);
+    Task SetStatusAsync(Guid sectionId, bool isActive);
+    Task ReorderAsync(IEnumerable<SectionOrderItem> items);
+    Task AssignFieldsAsync(Guid sectionId, AssignFieldsToSectionRequest request);
 }
 
 public interface IFieldOptionService

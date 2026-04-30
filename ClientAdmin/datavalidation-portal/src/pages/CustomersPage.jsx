@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import {
+  useOrganization,
   useCustomers, useCreateCustomer, useUpdateCustomer, useSetCustomerStatus,
 } from '@/hooks/useApi.js'
 import {
@@ -110,6 +111,7 @@ export default function CustomersPage() {
   const [confirmId, setConfirmId]   = useState(null)
   const [targetStatus, setTargetStatus] = useState(null)
 
+  const { data: org } = useOrganization(organizationId)
   const { data: paged, isLoading, isError } = useCustomers(organizationId, page, 50, showInactive)
   const setStatus = useSetCustomerStatus(organizationId)
   const toast     = useToast()
@@ -135,7 +137,8 @@ export default function CustomersPage() {
     <div>
       <PageHeader
         breadcrumbs={[
-          { label: 'Organisations', href: '/organizations' },
+          { label: 'Organizations', href: '/organizations' },
+          { label: org?.organizationName ?? '…', href: `/organizations/${organizationId}` },
           { label: 'Customers' },
         ]}
         title="Customers"

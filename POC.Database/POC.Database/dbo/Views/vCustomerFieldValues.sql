@@ -8,7 +8,7 @@ SELECT
     fd.FieldKey,
     fd.FieldLabel,
     fd.FieldType,
-    fd.DsiplayOrder                             AS DisplayOrder,
+    fd.DisplayOrder,
     fd.IsRequired,
     fs.SectionName,
     fs.DisplayOrder                             AS section_order,

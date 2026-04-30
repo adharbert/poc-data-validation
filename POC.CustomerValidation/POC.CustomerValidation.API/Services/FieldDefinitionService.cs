@@ -5,11 +5,12 @@ using POC.CustomerValidation.API.Models.Entites;
 
 namespace POC.CustomerValidation.API.Services;
 
-public class FieldDefinitionService(IFieldDefinitionRepository fieldRepo, IFieldOptionRepository optionRepo, IFieldSectionRepository sectionRepo) : IFieldDefinitionService
+public class FieldDefinitionService(IFieldDefinitionRepository fieldRepo, IFieldOptionRepository optionRepo, IFieldSectionRepository sectionRepo, ICustomerRepository customerRepo) : IFieldDefinitionService
 {
-    private readonly IFieldDefinitionRepository _fieldRepo = fieldRepo;
-    private readonly IFieldOptionRepository _optionRepo = optionRepo;
-    private readonly IFieldSectionRepository _sectionRepo = sectionRepo;
+    private readonly IFieldDefinitionRepository _fieldRepo    = fieldRepo;
+    private readonly IFieldOptionRepository     _optionRepo   = optionRepo;
+    private readonly IFieldSectionRepository    _sectionRepo  = sectionRepo;
+    private readonly ICustomerRepository        _customerRepo = customerRepo;
 
 
 
@@ -33,7 +34,9 @@ public class FieldDefinitionService(IFieldDefinitionRepository fieldRepo, IField
 
         var opts = IsOptionsField(field.FieldType) ? await _optionRepo.GetByFieldIdAsync(field.FieldDefinitionId) : [];
 
-        FieldSection? section = await _sectionRepo.GetByIdAsync(field.FieldSectionId);
+        FieldSection? section = field.FieldSectionId.HasValue
+            ? await _sectionRepo.GetByIdAsync(field.FieldSectionId.Value)
+            : null;
 
         return Map(field, section, opts);
     }
@@ -47,7 +50,7 @@ public class FieldDefinitionService(IFieldDefinitionRepository fieldRepo, IField
         {
             FieldDefinitionId   = Guid.NewGuid(),
             OrganizationId      = request.OrganizationId,
-            FieldSectionId      = request.SectionId ?? Guid.Empty,
+            FieldSectionId      = request.SectionId,
             FieldKey            = request.FieldKey,
             FieldLabel          = request.FieldLabel,
             FieldType           = request.FieldType,
@@ -61,6 +64,7 @@ public class FieldDefinitionService(IFieldDefinitionRepository fieldRepo, IField
             MinLength           = request.MinLength,
             MaxLength           = request.MaxLength,
             RegexPattern        = request.RegexPattern,
+            DisplayFormat       = request.DisplayFormat,
             CreatedDt           = DateTime.UtcNow,
             ModifiedDt          = DateTime.UtcNow
         };
@@ -98,12 +102,76 @@ public class FieldDefinitionService(IFieldDefinitionRepository fieldRepo, IField
 
 
 
+    public async Task<CustomerFormPreviewDto> GetFormPreviewAsync(Guid organizationId, Guid customerId)
+    {
+        var customer = await _customerRepo.GetByIdAsync(customerId)
+            ?? throw new KeyNotFoundException("Customer not found.");
+
+        var rows    = (await _fieldRepo.GetPreviewAsync(organizationId, customerId)).ToList();
+        var allOpts = new Dictionary<Guid, IEnumerable<FieldOption>>();
+
+        foreach (var row in rows.Where(r => r.FieldType is "dropdown" or "multiselect"))
+        {
+            if (!allOpts.ContainsKey(row.FieldDefinitionId))
+                allOpts[row.FieldDefinitionId] = await _optionRepo.GetByFieldIdAsync(row.FieldDefinitionId);
+        }
+
+        static string? CurrentValue(FieldPreviewRaw r) => r.FieldType switch
+        {
+            "number"   => r.ValueNumber?.ToString(),
+            "date"     => r.ValueDate?.ToString("yyyy-MM-dd"),
+            "boolean"  => r.ValueBoolean?.ToString(),
+            _          => r.ValueText,
+        };
+
+        static FieldPreviewItemDto ToItem(FieldPreviewRaw r, IEnumerable<FieldOption> opts) => new()
+        {
+            FieldDefinitionId = r.FieldDefinitionId,
+            SectionId         = r.SectionId,
+            FieldKey          = r.FieldKey,
+            FieldLabel        = r.FieldLabel,
+            FieldType         = r.FieldType,
+            HelpText          = r.HelpText,
+            IsRequired        = r.IsRequired,
+            DisplayOrder      = r.DisplayOrder,
+            CurrentValue      = CurrentValue(r),
+            DisplayFormat     = r.DisplayFormat,
+            Options           = opts.Select(o => new FieldOptionDto(o.OptionId, o.FieldDefinitionId, o.OptionKey, o.OptionLabel, o.DisplayOrder, o.IsActive)),
+        };
+
+        var sections = rows
+            .Where(r => r.SectionId.HasValue)
+            .GroupBy(r => (SectionId: r.SectionId!.Value, SectionName: r.SectionName!, SectionDisplayOrder: r.SectionDisplayOrder))
+            .OrderBy(g => g.Key.SectionDisplayOrder)
+            .Select(g => new SectionPreviewDto
+            {
+                SectionId    = g.Key.SectionId,
+                SectionName  = g.Key.SectionName,
+                DisplayOrder = g.Key.SectionDisplayOrder,
+                Fields       = g.OrderBy(r => r.DisplayOrder)
+                                .Select(r => ToItem(r, allOpts.GetValueOrDefault(r.FieldDefinitionId, []))),
+            });
+
+        var unassigned = rows
+            .Where(r => !r.SectionId.HasValue)
+            .OrderBy(r => r.DisplayOrder)
+            .Select(r => ToItem(r, allOpts.GetValueOrDefault(r.FieldDefinitionId, [])));
+
+        return new CustomerFormPreviewDto
+        {
+            CustomerId       = customerId,
+            CustomerName     = $"{customer.FirstName} {customer.LastName}",
+            Sections         = sections,
+            UnassignedFields = unassigned,
+        };
+    }
+
     private static FieldDefinitionDto Map(FieldDefinition entity, FieldSection? section, IEnumerable<FieldOption> opts)
     {
         return new FieldDefinitionDto(
             FieldDefinitionId: entity.FieldDefinitionId,
             OrganizationId: entity.OrganizationId,
-            SectionId: entity.FieldSectionId,
+            SectionId: entity.FieldSectionId == Guid.Empty ? null : entity.FieldSectionId,
             SectionName: section?.SectionName,
             FieldKey: entity.FieldKey,
             FieldLabel: entity.FieldLabel,
@@ -118,6 +186,7 @@ public class FieldDefinitionService(IFieldDefinitionRepository fieldRepo, IField
             MinLength: entity.MinLength,
             MaxLength: entity.MaxLength,
             RegexPattern: entity.RegexPattern,
+            DisplayFormat: entity.DisplayFormat,
             Options: opts.Select(o => new FieldOptionDto(o.OptionId, o.FieldDefinitionId, o.OptionKey, o.OptionLabel, o.DisplayOrder, o.IsActive))
         );
     }

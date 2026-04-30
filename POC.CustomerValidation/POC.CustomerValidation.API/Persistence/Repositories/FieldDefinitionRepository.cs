@@ -24,6 +24,7 @@ public class FieldDefinitionRepository(IDbConnectionFactory db) : IFieldDefiniti
         		, fd.MinLength
         		, fd.MaxLength
         		, fd.RegExPattern
+        		, fd.DisplayFormat
         		, fd.CreatedDt
         		, fd.ModifiedDt
         """;
@@ -37,7 +38,7 @@ public class FieldDefinitionRepository(IDbConnectionFactory db) : IFieldDefiniti
                 FROM   FieldDefinitions fd with(nolock)
                 WHERE  fd.OrganizationId = @OrganizationId 
                         AND (@IncludeInactive = 1 OR fd.IsActive = 1)    
-                ORDER   BY fd.DisplayOrder
+                ORDER   BY fd.FieldSectionId, fd.DisplayOrder
         """;
         using var connection = _db.CreateConnection();
         return await connection.QueryAsync<FieldDefinition>(sql, new { OrganizationId = organizationId, IncludeInactive = includeInactive });
@@ -88,8 +89,8 @@ public class FieldDefinitionRepository(IDbConnectionFactory db) : IFieldDefiniti
         fieldDefinition.ModifiedDt = DateTime.UtcNow;
 
         const string sql = """
-                INSERT INTO FieldDefinitions (Id, OrganizationId, FieldSectionId, FieldKey, FieldLabel, FieldType, PlaceHolderText, HelpText, IsRequired, IsActive, DisplayOrder, MinValue, MaxValue, MinLength, MaxLength, RegExPattern, CreatedDt, ModifiedDt)
-                VALUES (@FieldDefinitionId, @OrganizationId, @FieldSectionId, @FieldKey, @FieldLabel, @FieldType, @Placeholder, @HelpText, @IsRequired, @IsActive, @DisplayOrder, @MinValue, @MaxValue, @MinLength, @MaxLength, @RegexPattern, @CreatedDt, @ModifiedDt)
+                INSERT INTO FieldDefinitions (Id, OrganizationId, FieldSectionId, FieldKey, FieldLabel, FieldType, PlaceHolderText, HelpText, IsRequired, IsActive, DisplayOrder, MinValue, MaxValue, MinLength, MaxLength, RegExPattern, DisplayFormat, CreatedDt, ModifiedDt)
+                VALUES (@FieldDefinitionId, @OrganizationId, @FieldSectionId, @FieldKey, @FieldLabel, @FieldType, @Placeholder, @HelpText, @IsRequired, @IsActive, @DisplayOrder, @MinValue, @MaxValue, @MinLength, @MaxLength, @RegexPattern, @DisplayFormat, @CreatedDt, @ModifiedDt)
             """;
         using var connection = _db.CreateConnection();
         await connection.ExecuteAsync(sql, fieldDefinition);
@@ -117,6 +118,7 @@ public class FieldDefinitionRepository(IDbConnectionFactory db) : IFieldDefiniti
                        MinLength        = @MinLength,
                        MaxLength        = @MaxLength,
                        RegExPattern     = @RegexPattern,
+                       DisplayFormat    = @DisplayFormat,
                        ModifiedDt       = @ModifiedDt
                 WHERE  Id = @FieldDefinitionId
             """;
@@ -151,5 +153,50 @@ public class FieldDefinitionRepository(IDbConnectionFactory db) : IFieldDefiniti
         using var conn = _db.CreateConnection();
         var rows = await conn.ExecuteAsync(sql, new { FieldDefinitionId, IsActive, ModifiedDt = DateTime.UtcNow });
         return rows > 0;
+    }
+
+    public async Task<bool> BulkAssignSectionAsync(Guid? sectionId, IEnumerable<(Guid FieldId, int DisplayOrder)> assignments)
+    {
+        const string sql = """
+                UPDATE FieldDefinitions
+                SET    FieldSectionId = @SectionId,
+                       DisplayOrder   = @DisplayOrder,
+                       ModifiedDt     = @ModifiedDt
+                WHERE  Id = @FieldId
+            """;
+        using var conn = _db.CreateConnection();
+        var rows = await conn.ExecuteAsync(sql,
+            assignments.Select(a => new { SectionId = sectionId, a.DisplayOrder, FieldId = a.FieldId, ModifiedDt = DateTime.UtcNow }));
+        return rows > 0;
+    }
+
+    public async Task<IEnumerable<FieldPreviewRaw>> GetPreviewAsync(Guid organizationId, Guid customerId)
+    {
+        const string sql = """
+                SELECT  fd.Id                                           AS FieldDefinitionId
+                    ,   fd.FieldSectionId                               AS SectionId
+                    ,   fs.SectionName
+                    ,   ISNULL(fs.DisplayOrder, 9999)                   AS SectionDisplayOrder
+                    ,   fd.FieldKey
+                    ,   fd.FieldLabel
+                    ,   fd.FieldType
+                    ,   fd.HelpText
+                    ,   fd.IsRequired
+                    ,   fd.DisplayOrder
+                    ,   fd.DisplayFormat
+                    ,   fv.ValueText
+                    ,   fv.ValueNumber
+                    ,   fv.ValueDate
+                    ,   fv.ValueBoolean
+                FROM    FieldDefinitions fd WITH(NOLOCK)
+                LEFT JOIN FieldSections  fs WITH(NOLOCK) ON fs.Id = fd.FieldSectionId
+                LEFT JOIN FieldValues    fv WITH(NOLOCK) ON fv.FieldDefinitionId = fd.Id
+                                                         AND fv.CustomerId = @CustomerId
+                WHERE   fd.OrganizationId = @OrganizationId
+                  AND   fd.IsActive = 1
+                ORDER BY SectionDisplayOrder, fd.DisplayOrder
+            """;
+        using var conn = _db.CreateConnection();
+        return await conn.QueryAsync<FieldPreviewRaw>(sql, new { OrganizationId = organizationId, CustomerId = customerId });
     }
 }

@@ -68,6 +68,20 @@ export const projectApi = {
 }
 
 // ---------------------------------------------------------------------------
+// Field Sections
+// ---------------------------------------------------------------------------
+export const sectionApi = {
+  getAll:       (orgId)                       => api.get(`/organisations/${orgId}/sections`).then(r => r.data),
+  getById:      (orgId, sectionId)            => api.get(`/organisations/${orgId}/sections/${sectionId}`).then(r => r.data),
+  create:       (orgId, data)                 => api.post(`/organisations/${orgId}/sections`, data).then(r => r.data),
+  update:       (orgId, sectionId, data)      => api.put(`/organisations/${orgId}/sections/${sectionId}`, data).then(r => r.data),
+  setStatus:    (orgId, sectionId, isActive)  => api.patch(`/organisations/${orgId}/sections/${sectionId}/status`, { isActive }).then(r => r.data),
+  reorder:      (orgId, sections)             => api.post(`/organisations/${orgId}/sections/reorder`, { sections }).then(r => r.data),
+  assignFields: (orgId, sectionId, fields)    => api.put(`/organisations/${orgId}/sections/${sectionId}/fields`, { fields }).then(r => r.data),
+  formPreview:  (orgId, customerId)           => api.get(`/organisations/${orgId}/customers/${customerId}/form-preview`).then(r => r.data),
+}
+
+// ---------------------------------------------------------------------------
 // Dashboard
 // ---------------------------------------------------------------------------
 export const dashboardApi = {

@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import {
+  useOrganization,
   useUploadImport, useSaveMappings, usePreviewImport,
   useExecuteImport, useImportBatch, useImportBatches,
 } from '@/hooks/useApi.js'
@@ -8,6 +9,7 @@ import { importApi } from '@/api/services.js'
 import {
   PageHeader, LoadingState, ErrorAlert, ImportStatusBadge, EmptyState, useToast,
 } from '@/components/common/index.jsx'
+import { fmtDate } from '@/utils/dates.js'
 
 const STEPS = ['Upload', 'Map Columns', 'Preview', 'Execute', 'Done']
 
@@ -481,7 +483,7 @@ function ImportHistory({ orgId }) {
                   <td className="text-muted-sm">{b.totalRows ?? '—'}</td>
                   <td className="text-muted-sm">{b.importedRows ?? '—'}</td>
                   <td className="text-muted-sm">{b.errorRows ?? '—'}</td>
-                  <td className="text-muted-sm">{b.uploadedAt ? new Date(b.uploadedAt).toLocaleDateString() : '—'}</td>
+                  <td className="text-muted-sm">{fmtDate(b.uploadedAt)}</td>
                 </tr>
               ))}
             </tbody>
@@ -497,6 +499,7 @@ function ImportHistory({ orgId }) {
 // ---------------------------------------------------------------------------
 export default function ImportPage() {
   const { organizationId } = useParams()
+  const { data: org } = useOrganization(organizationId)
   const [step, setStep]         = useState(0)
   const [uploadResult, setUploadResult] = useState(null)
 
@@ -527,6 +530,7 @@ export default function ImportPage() {
       <PageHeader
         breadcrumbs={[
           { label: 'Organisations', href: '/organizations' },
+          { label: org?.organizationName ?? '…', href: `/organizations/${organizationId}` },
           { label: 'Import' },
         ]}
         title="Import Customers"

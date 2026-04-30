@@ -2,7 +2,7 @@
 
 public class FieldSection
 {
-    public Guid     FieldSectionId  { get; set; }
+    public Guid     SectionId  { get; set; }
     public Guid     OrganizationId  { get; set; }
     public string   SectionName     { get; set; } = default!;
     public int      DisplayOrder    { get; set; }

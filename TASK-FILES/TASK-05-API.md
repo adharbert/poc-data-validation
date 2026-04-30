@@ -232,6 +232,140 @@ Existing options not in the payload are deactivated.
 
 ---
 
+## Field Sections
+
+All section routes are scoped under an organisation.
+
+### GET /api/organisations/{organisationId}/sections
+List all field sections for the organisation.
+
+**Response:** `200 OK` — array of `FieldSectionDto`
+```json
+[
+  {
+    "sectionId": "guid",
+    "organisationId": "guid",
+    "sectionName": "Personal Information",
+    "displayOrder": 1,
+    "isActive": true,
+    "fields": []
+  }
+]
+```
+
+---
+
+### POST /api/organisations/{organisationId}/sections
+Create a new section.
+
+**Body:**
+```json
+{
+  "sectionName": "Employment Details",
+  "displayOrder": 2
+}
+```
+
+**Response:** `201 Created` — `FieldSectionDto`
+
+---
+
+### GET /api/organisations/{organisationId}/sections/{sectionId}
+Get a single section.
+
+**Response:** `200 OK` — `FieldSectionDto`
+**Response:** `404 Not Found`
+
+---
+
+### PUT /api/organisations/{organisationId}/sections/{sectionId}
+Update a section's name or display order.
+
+**Response:** `200 OK` — `FieldSectionDto`
+**Response:** `404 Not Found`
+
+---
+
+### PATCH /api/organisations/{organisationId}/sections/{sectionId}/status
+Activate or deactivate a section. Fields within the section are unaffected.
+
+**Body:**
+```json
+{ "isActive": false }
+```
+
+**Response:** `204 No Content`
+
+---
+
+### POST /api/organisations/{organisationId}/sections/reorder
+Update the display order for multiple sections in one call.
+
+**Body:**
+```json
+{
+  "sections": [
+    { "sectionId": "guid", "displayOrder": 1 },
+    { "sectionId": "guid", "displayOrder": 2 }
+  ]
+}
+```
+
+**Response:** `204 No Content`
+
+---
+
+### PUT /api/organisations/{organisationId}/sections/{sectionId}/fields
+Assign fields to a section (and set their display order within it).
+Replaces the section's current field assignments.
+
+**Body:**
+```json
+{
+  "fields": [
+    { "fieldDefinitionId": "guid", "displayOrder": 1 },
+    { "fieldDefinitionId": "guid", "displayOrder": 2 }
+  ]
+}
+```
+
+**Response:** `204 No Content`
+
+---
+
+### GET /api/organisations/{organisationId}/customers/{customerId}/form-preview
+Returns the full form structure for a customer, grouped by section, with each
+field's current saved value. Used by the admin Inputs page Form Preview panel.
+
+**Response:** `200 OK` — `CustomerFormPreviewDto`
+```json
+{
+  "customerId": "guid",
+  "customerName": "Jane Smith",
+  "sections": [
+    {
+      "sectionId": "guid",
+      "sectionName": "Personal Information",
+      "fields": [
+        {
+          "fieldDefinitionId": "guid",
+          "fieldKey": "first_name",
+          "fieldLabel": "First Name",
+          "fieldType": "text",
+          "isRequired": true,
+          "helpText": null,
+          "currentValue": "Jane",
+          "options": []
+        }
+      ]
+    }
+  ],
+  "unassignedFields": []
+}
+```
+
+---
+
 ## Field Values (admin read-only)
 
 ### GET /api/customers/{customerId}/values

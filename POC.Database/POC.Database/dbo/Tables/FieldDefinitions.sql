@@ -24,12 +24,13 @@ CREATE TABLE FieldDefinitions (
 	[HelpText]				nvarchar(500)		NULL,
 	[IsRequired]			bit					NOT NULL	DEFAULT(0),
 	[IsActive]				bit					NOT NULL	DEFAULT(1),
-	[DsiplayOrder]			int					NOT NULL	DEFAULT(0),
+	[DisplayOrder]			int					NOT NULL	DEFAULT(0),
 	[MinValue]				DECIMAL(18,4)		NULL,		-- for number fields
 	[MaxValue]				DECIMAL(18,4)		NULL,		-- for number fields
 	[MinLength]				int					NULL,		-- for text fields
 	[MaxLength]				int					NULL,		-- for text fields
 	[RegExPattern]			nvarchar(500)		NULL,		-- for text fields
+	[DisplayFormat]			nvarchar(20)		NULL,		-- for phone fields: '(XXX) XXX-XXXX', 'XXX-XXX-XXXX', 'XXX.XXX.XXXX'
 	[CreatedDt]				datetime			NOT NULL	DEFAULT(GETUTCDATE()),
 	[ModifiedDt]			datetime			NOT NULL	DEFAULT(GETUTCDATE()),	
 	
@@ -47,13 +48,13 @@ CREATE TABLE FieldDefinitions (
 
 	-- make sure only these types are used in this field
 	CONSTRAINT [CK_FieldDefinitions_Type] CHECK (
-        [FieldType] IN ('text','number','date','datetime','checkbox','dropdown','multiselect')
+        [FieldType] IN ('text','number','date','datetime','checkbox','dropdown','multiselect','phone')
     )
 
 )
 GO
 
-CREATE INDEX IX_field_definitions_client  ON FieldDefinitions ([OrganizationId], [DsiplayOrder]);
+CREATE INDEX IX_field_definitions_client  ON FieldDefinitions ([OrganizationId], [DisplayOrder]);
 GO
 
 CREATE INDEX IX_field_definitions_section ON FieldDefinitions ([FieldSectionId]);
