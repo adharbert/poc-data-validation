@@ -82,6 +82,7 @@ A new row in `FieldDefinitions` is all it takes.
 | Concern | Technology |
 |---|---|
 | Framework | React 18, Vite 6 |
+| NPM | 24.11.0 or newer |
 | Language | Plain JavaScript — **no TypeScript** |
 | Styling | Bootstrap 5.3 + SASS (compiled by Live SASS Compiler extension) |
 | Font | DM Sans (Google Fonts) |

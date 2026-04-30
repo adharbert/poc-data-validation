@@ -14,6 +14,12 @@
 --  MarketingEndDate drives the dashboard expiry warning.
 --  The DashboardSettings:WarningDaysThreshold in appsettings
 --  controls how many days before expiry the warning appears.
+/*
+    SEED the data with fake information:
+      insert into [MarketingProjects] ([OrganizationId] ,[ContractId] ,[ProjectName] ,[MarketingStartDate] ,[MarketingEndDate] ,[IsActive] ,[Notes] ,[CreatedDt] ,[CreatedBy] ,[ModifiedDt] ,[ModifiedBy])
+      values ('3CFDCADA-ADC0-F011-B692-A0B339B26E42', '462F5ED6-4944-F111-9BF2-F4CE231FB2F0', 'Data Validation', '4/15/2026', '8/25/2026', 1, NULL, GETUTCDATE(), 'andrew.harbert@publishingconcepts.com', GETUTCDATE(), 'andrew.harbert@publishingconcepts.com')
+
+*/
 -- ============================================================
 CREATE TABLE dbo.MarketingProjects (
     [Id]                    int                 NOT NULL    IDENTITY(8000, 1),

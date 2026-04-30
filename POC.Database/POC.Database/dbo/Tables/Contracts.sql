@@ -11,6 +11,11 @@
 --
 --  ContractNumber is an optional external reference (e.g. from
 --  a CRM system) and is not required to be unique.
+/*
+    SEED the data with fake information:
+        insert into [Contracts]([OrganizationId] ,[ContractName] ,[ContractNumber] ,[StartDate] ,[EndDate] ,[IsActive] ,[Notes] ,[CreatedDt] ,[CreatedBy] ,[ModifiedDt] ,[ModifiedBy])
+        values ('3CFDCADA-ADC0-F011-B692-A0B339B26E42', 'PCI-ADX-Data Validation', 'PCI156481', '2026-01-15', '2027-02-01', 1, NULL, GETUTCDATE(), 'andrew.harbert@publishingconcepts.com', GETUTCDATE(), 'andrew.harbert@publishingconcepts.com')
+*/
 -- ============================================================
 CREATE TABLE dbo.Contracts (
     [Id]                [uniqueidentifier]  NOT NULL    DEFAULT (NEWSEQUENTIALID()),
