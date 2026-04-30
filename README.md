@@ -112,7 +112,13 @@ A new row in `FieldDefinitions` is all it takes.
 | Marketing Projects | (within org context) | Per-org, multiple active allowed |
 | CSV/Excel Import | `/organizations/:id/import` | 5-step wizard: upload → map → preview → execute |
 | Import Staging | `/organizations/:id/import-staging` | Resolve unmatched columns |
+| Organisation search | `/organizations` | Server-side `?search=` on name/abbreviation/code; debounced input |
+| Dashboard org filter | `/dashboard` | Client-side search filter on org comparison table |
+| Phone field type | `/organizations/:id/inputs` | Stored as digits; live `(XXX) XXX-XXXX` masking on input |
+| Breadcrumb navigation | all sub-pages | Organisations → Org name → Current page |
+| Consistent date formatting | — | All dates via `fmtDate()` — MM/dd/yyyy |
 | Serilog config | — | DB sinks toggled per environment via appsettings |
+| Unit test suite | — | `POC.CustomerValidation.Test` — 142 xUnit tests, all 10 controllers, ≥ 90% coverage |
 
 ### Remaining
 
@@ -132,6 +138,7 @@ poc-data-validation/
 ├── CLAUDE.md                                   ← Claude Code session context
 │
 ├── POC.CustomerValidation/
+│   ├── POC.CustomerValidation.slnx             ← .NET 10 solution (new slnx format)
 │   ├── POC.CustomerValidation.API/             ← .NET 10 Web API
 │   │   ├── Controllers/
 │   │   │   ├── OrganizationsController.cs
@@ -161,6 +168,9 @@ poc-data-validation/
 │   │   ├── appsettings.json
 │   │   ├── appsettings.Production.json
 │   │   └── Program.cs
+│   │
+│   ├── POC.CustomerValidation.Test/            ← xUnit test project (.NET 10)
+│   │   └── Controllers/                        ← One test class per controller (142 tests)
 │   │
 │   └── POC.Database/                           ← SSDT database project
 │       ├── Tables/
@@ -243,6 +253,15 @@ dotnet run --project POC.CustomerValidation/POC.CustomerValidation.API --launch-
 - Scalar interactive docs: `https://localhost:7124/scalar/v1`
 - OpenAPI JSON: `https://localhost:7124/openapi/v1.json`
 - Health check: `https://localhost:7124/health`
+
+### Run unit tests
+
+```bash
+cd POC.CustomerValidation
+dotnet test POC.CustomerValidation.Test/POC.CustomerValidation.Test.csproj
+```
+
+142 tests across all 10 controllers. All tests must pass before merging.
 
 ### Run admin React only
 
@@ -408,7 +427,7 @@ All detailed documentation lives in [`TASK-FILES/`](TASK-FILES/).
 |---|---|
 | [TASK-01 — Project Structure](TASK-FILES/TASK-01-project-structure.md) | Directory layout and file responsibilities |
 | [TASK-02 — Project Plan](TASK-FILES/TASK-02-PROJECT_PLAN.md) | Phased build plan — what's done, what's next |
-| [TASK-03 — Coding Conventions](TASK-FILES/TASK-03-CODING_CONVENTIONS.md) | All rules — must read before writing any code |
+| [TASK-03 — Coding Conventions](TASK-FILES/TASK-03-CODING_CONVENTIONS.md) | All rules — must read before writing any code (includes unit testing patterns) |
 | [TASK-04 — Database](TASK-FILES/TASK-04-DATABASE.md) | Full schema: all tables, columns, constraints |
 | [TASK-05 — API](TASK-FILES/TASK-05-API.md) | All endpoints with request/response shapes |
 | [TASK-06 — Frontend](TASK-FILES/TASK-06-FRONTEND.md) | React app structure, component guide, API client pattern |

@@ -11,21 +11,24 @@ The following have been fully built (API + Admin SPA):
 | Feature | Notes |
 |---|---|
 | Organisations CRUD | List, create, edit, activate/deactivate |
+| Organisation search | Server-side `?search=` on `GET /api/organizations`; debounced input on OrganizationsPage; client-side filter on DashboardPage org table |
 | Organisation Detail Page | Per-org stats, contracts + projects timelines, validation progress, nav tiles |
 | Field Definitions (Inputs) | Full CRUD, type-aware modal (incl. phone + display format), options management |
 | Phone field type | Stored as digits only; rendered via configurable `DisplayFormat` |
+| Phone input masking | Live `(XXX) XXX-XXXX` formatting while typing; strips to digits on save |
 | Field Sections | Create/edit/reorder/assign, drag-and-drop in Inputs page |
 | Form Preview | Admin selects customer → reads form with live values |
 | Customers | Paginated list, create/edit/activate/deactivate |
 | Contracts | Per-org, single active constraint enforced |
 | Marketing Projects | Per-org, multiple active allowed |
-| Dashboard | Global stat cards, org comparison chart, expiring projects list |
+| Dashboard | Global stat cards, org comparison chart, expiring projects list, org search filter |
 | Import (5-step wizard) | Upload CSV/Excel, column mapping, value mapping, preview, execute |
 | Import Staging | Resolve unmatched columns post-import |
 | Breadcrumb navigation | All sub-pages show Organisations → Org name → Page breadcrumb |
 | Consistent date formatting | All dates display as MM/dd/yyyy via shared `fmtDate()` util |
 | Serilog sinks | Console always on; DB sinks (InformationLogs/ErrorLogs) toggled by config |
 | SVG logo | PCI logo in sidebar; collapses to icon when sidebar is collapsed |
+| Unit test suite | `POC.CustomerValidation.Test` — 142 xUnit tests, all 10 controllers, ≥ 90% coverage |
 
 ---
 

@@ -25,13 +25,18 @@ Authorization: Bearer <Azure AD JWT token>
 
 ## Organisations
 
-### GET /api/organisations
+### GET /api/organizations
 List all organisations.
 
 **Query params:**
-- `includeInactive` (bool, default false)
+- `includeInactive` (bool, default `false`) — include inactive organisations
+- `search` (string, optional) — case-insensitive LIKE filter applied to `Name`, `Abbreviation`, and `OrganizationCode`
 
 **Response:** `200 OK` — array of `OrganizationDto`
+
+**Notes:**
+- Results are always ordered by `Name`
+- `search` is trimmed server-side; passing an empty string is treated as no filter
 
 ---
 

@@ -10,7 +10,9 @@ Phased build plan. Completed phases are marked ✓.
 
 ### 1a — Organisations ✓
 - `GET/POST/PUT/PATCH /api/organisations` — full CRUD
-- `OrganizationsPage.jsx` — table, create/edit modal, activate/deactivate
+- `GET /api/organizations?search=` — server-side search (name, abbreviation, code)
+- `OrganizationsPage.jsx` — table, create/edit modal, activate/deactivate, debounced search input
+- `DashboardPage.jsx` — client-side search filter on Organisation Overview table
 
 ### 1b — Field Definitions & Sections (Inputs) ✓
 - Fields API: `GET/POST/PUT/PATCH /api/organizations/{orgId}/fields`
@@ -167,12 +169,41 @@ Two app registrations needed:
 
 ---
 
+## Phase 6 — Unit Testing ✓ COMPLETE
+
+**Goal:** Automated unit test suite for the API layer with ≥ 90% method, line, and branch coverage.
+
+### Test project ✓
+- `POC.CustomerValidation.Test` — xUnit 2.9.3, Moq 4.20.72, .NET 10
+- Added to `POC.CustomerValidation.slnx`
+- `<FrameworkReference Include="Microsoft.AspNetCore.App" />` for ASP.NET Core types
+- Project reference to `POC.CustomerValidation.API`
+
+### Coverage ✓ — 142 tests, 0 failures
+| Controller | Tests | Key cases covered |
+|---|---|---|
+| `OrganizationsController` | 9 | GetAll params/search, GetById null-passthrough, Create route values, SetStatus both states |
+| `CustomersController` | 11 | GetAll paging, GetById found/NotFound, Create CreatedAtAction, SetStatus |
+| `FieldsController` | 13 | GetById NotFound, Update merges fieldId into request, Reorder tuple projection |
+| `FieldOptionsController` | 12 | Create returns 201 ObjectResult, BulkUpsert, Delete service verification |
+| `FieldSectionsController` | 16 | GetSection NotFound, ReorderSections collection pass-through, GetFormPreview |
+| `ContractsController` | 12 | GetById NotFound, SetStatus default ModifiedBy, custom ModifiedBy |
+| `ProjectsController` | 13 | int-keyed GetById/Update/SetStatus, default/custom ModifiedBy |
+| `DashboardController` | 10 | Default WarningDays=30, config override, Theory over 3 values |
+| `ImportsController` | 24 | Upload null/empty/valid file, GetBatch NotFound, Execute→Accepted, staging CRUD |
+| `CustomerFieldValuesController` | 12 | GetAll empty, GetHistory default paging, GetFieldHistory service isolation |
+
+### Conventions
+See `TASK-03-CODING_CONVENTIONS.md` § Unit Testing.
+
+---
+
 ## Phase sequence summary
 
 ```
-Phases 1 + 2 ✓  →  Phase 3  →  Phase 4  →  Phase 5
-Admin + Import      Customer     Auth         Customer
-complete            portal       (all)        detail
+Phases 1 + 2 ✓  →  Phase 6 ✓  →  Phase 3  →  Phase 4  →  Phase 5
+Admin + Import      Unit Tests     Customer     Auth         Customer
+complete            complete       portal       (all)        detail
 ```
 
 Phase 5 (customer detail) is small and can be done any time since the API is already built.

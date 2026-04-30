@@ -88,26 +88,28 @@ zero schema migrations — just a new row in `FieldDefinitions`.
 ## Solution Structure
 
 ```
-EchoCustomerValidation/
+poc-data-validation/
 ├── CLAUDE.md                                   ← Claude Code context file
 ├── POC.CustomerValidation/
-│   └── POC.CustomerValidation.API/             ← .NET 10 Web API
-│       ├── Controllers/
-│       ├── Interfaces/
-│       ├── Middleware/
-│       │   ├── ExceptionHandlingMiddleware.cs
-│       │   └── RequestLoggingMiddleware.cs
-│       ├── Models/
-│       │   ├── DTOs/
-│       │   └── Entites/
-│       ├── Persistence/
-│       │   └── Repositories/
-│       │       └── OrganizationRepository.cs
-│       ├── Services/
-│       ├── Startup/
-│       │   └── SerilogSetup.cs
-│       ├── Program.cs
-│       └── appsettings.json
+│   ├── POC.CustomerValidation.slnx             ← .NET 10 solution (new slnx format)
+│   ├── POC.CustomerValidation.API/             ← .NET 10 Web API
+│   │   ├── Controllers/
+│   │   ├── Interfaces/
+│   │   ├── Middleware/
+│   │   │   ├── ExceptionHandlingMiddleware.cs
+│   │   │   └── RequestLoggingMiddleware.cs
+│   │   ├── Models/
+│   │   │   ├── DTOs/
+│   │   │   └── Entites/
+│   │   ├── Persistence/
+│   │   │   └── Repositories/
+│   │   ├── Services/
+│   │   ├── Startup/
+│   │   │   └── SerilogSetup.cs
+│   │   ├── Program.cs
+│   │   └── appsettings.json
+│   └── POC.CustomerValidation.Test/            ← xUnit test project
+│       └── Controllers/                        ← One test class per controller
 ├── ClientAdmin/
 │   └── datavalidation-portal/                  ← Admin React SPA
 │       ├── src/
@@ -120,21 +122,21 @@ EchoCustomerValidation/
 │       │   │   └── layout/AppLayout.jsx
 │       │   ├── hooks/useApi.js                 ← React Query hooks
 │       │   ├── pages/
-│       │   │   ├── ClientsPage.jsx
-│       │   │   └── FieldDefinitionsPage.jsx
-│       │   └── styles/main.scss
+│       │   └── utils/
+│       │       └── dates.js                    ← fmtDate / fmtPhone / formatPhoneInput
 │       ├── package.json
 │       └── vite.config.js
 └── TASK-FILES/                                 ← All .md documentation
     ├── README.md                               ← This file
     ├── TASK-01-project-structure.md            ← Project structure overview
     ├── TASK-02-PROJECT_PLAN.md                 ← Phased build plan
-    ├── TASK-03-CODING_CONVENTIONS.md           ← Rules for Claude Code
+    ├── TASK-03-CODING_CONVENTIONS.md           ← Rules for Claude Code (incl. testing)
     ├── TASK-04-DATABASE.md                     ← Full schema reference
     ├── TASK-05-API.md                          ← All endpoints
     ├── TASK-06-FRONTEND.md                     ← React app conventions
     ├── TASK-07-IMPORT.md                       ← CSV/Excel import design
-    └── TASK-08-WHATS_NEXT.md                   ← Remaining work
+    ├── TASK-08-WHATS_NEXT.md                   ← Remaining work
+    └── TASK-09-CONTRACTS-PROJECTS.md           ← Contracts, Projects, Import Staging
 ```
 
 ---
@@ -158,8 +160,14 @@ npm run dev:all
 dotnet run --project POC.CustomerValidation/POC.CustomerValidation.API \
   --launch-profile https
 ```
-API: `https://localhost:7017`
-Scalar UI: `https://localhost:7017/scalar/v1`
+API: `https://localhost:7124`
+Scalar UI: `https://localhost:7124/scalar/v1`
+
+### Run unit tests
+```bash
+cd POC.CustomerValidation
+dotnet test POC.CustomerValidation.Test/POC.CustomerValidation.Test.csproj
+```
 
 ### Run admin React only
 ```bash
@@ -193,3 +201,7 @@ App: `http://localhost:5173`
 | `TASK-07-IMPORT.md` | CSV/Excel import design, field mapping, CustomerCode generation |
 | `TASK-08-WHATS_NEXT.md` | Everything not yet built, prioritised |
 | `TASK-09-CONTRACTS-PROJECTS.md` | Contracts, Marketing Projects, Import Staging — business rules and schema |
+
+### Test project
+`POC.CustomerValidation.Test` contains 142 xUnit unit tests covering all 10 API controllers.
+See `TASK-03-CODING_CONVENTIONS.md` § Unit Testing for patterns and conventions.

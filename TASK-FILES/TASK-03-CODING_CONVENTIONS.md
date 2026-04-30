@@ -330,3 +330,85 @@ END
 database (`DsiplayOrder` not `DisplayOrder`). **Do not rename it.**
 The column name is established in production data. Always reference
 it as `DsiplayOrder` in SQL and `DsiplayOrder` in entity/DTO mapping.
+
+---
+
+## Unit Testing
+
+### Project
+`POC.CustomerValidation.Test` — xUnit 2.9.3, Moq 4.20.72, .NET 10, `<FrameworkReference Include="Microsoft.AspNetCore.App" />`.
+
+### Instantiate controllers directly — never use WebApplicationFactory
+```csharp
+// CORRECT — fast, no HTTP pipeline
+private FieldsController CreateSut() =>
+    new(_svcMock.Object, NullLogger<FieldsController>.Instance);
+
+// WRONG for unit tests — boots the full app, needs a real DB
+var factory = new WebApplicationFactory<Program>();
+```
+
+### Use NullLogger, never mock ILogger
+```csharp
+// CORRECT
+NullLogger<OrganizationsController>.Instance
+
+// WRONG — verbose, adds no value
+var logMock = new Mock<ILogger<OrganizationsController>>();
+```
+
+### Assert the result type and value
+```csharp
+var result = await sut.GetById(id);
+
+var ok = Assert.IsType<OkObjectResult>(result);
+Assert.Equal(expected, ok.Value);
+
+// NotFound
+Assert.IsType<NotFoundResult>(result);
+
+// NoContent
+Assert.IsType<NoContentResult>(result);
+
+// CreatedAtAction
+var created = Assert.IsType<CreatedAtActionResult>(result);
+Assert.Equal(nameof(Controller.GetById), created.ActionName);
+Assert.Equal(entity.Id, created.RouteValues!["id"]);
+
+// ObjectResult with explicit status (e.g. StatusCode(201, value))
+var obj = Assert.IsType<ObjectResult>(result);
+Assert.Equal(201, obj.StatusCode);
+```
+
+### Use [Theory] for branching inputs
+```csharp
+[Theory]
+[InlineData(true)]
+[InlineData(false)]
+public async Task SetStatus_ReturnsNoContent(bool isActive) { ... }
+
+[Theory]
+[InlineData(false, null)]
+[InlineData(true,  "acme")]
+public async Task GetAll_ReturnsOk_WithVariousParams(bool inactive, string? search) { ... }
+```
+
+### IConfiguration — use real ConfigurationBuilder, not a mock
+Extension methods like `GetValue<T>` cannot be mocked with Moq.
+```csharp
+var config = new ConfigurationBuilder()
+    .AddInMemoryCollection(new Dictionary<string, string?> {
+        ["DashboardSettings:WarningDaysThreshold"] = "14"
+    })
+    .Build();
+// For default (key absent), pass an empty dictionary — GetValue returns the default
+```
+
+### Verify service calls when argument correctness matters
+```csharp
+_svcMock.Verify(s => s.ChangeStatusAsync(contractId, true, "Admin"), Times.Once);
+```
+Do not verify every call — only where the wrong argument would not be caught by the assertion on the return value.
+
+### Test file location
+`POC.CustomerValidation.Test/Controllers/<ControllerName>Tests.cs` — one file per controller.
