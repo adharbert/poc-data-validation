@@ -33,6 +33,8 @@ public static class DependencyInjectionSetup
         services.AddScoped<IImportColumnStagingRepository,      ImportColumnStagingRepository>();
         services.AddScoped<IDashboardRepository,                DashboardRepository>();
         services.AddScoped<ICustomerAddressRepository,          CustomerAddressRepository>();
+        services.AddScoped<ICustomerPhoneRepository,            CustomerPhoneRepository>();
+        services.AddScoped<ICustomerEmailRepository,            CustomerEmailRepository>();
 
         // Services DI  ---------------------------------------------------------
         services.AddScoped<IOrganizationServices,               OrganizationServices>();

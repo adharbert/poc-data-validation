@@ -2,67 +2,87 @@
 --  ImportColumnMappings
 --
 --  One row per CSV column, per import batch.
---  Defines how each CSV header maps to either a Customer
---  table column or a FieldDefinition field.
+--  Defines how each source header maps to a destination field.
 --
---  MappingType values:
---    customer_field     = maps to a fixed Customers column
---    field_definition   = maps to a FieldDefinitions row
---    skip               = column is ignored during import
+--  DestinationTable values:
+--    customer         = maps to a fixed Customers column
+--    customer_address = maps to a CustomerAddresses column
+--    field_value      = maps to a FieldDefinitions row (key/value)
+--    skip             = column is ignored during import
 --
---  CustomerFieldName is used when MappingType = 'customer_field'
---  Valid values: FirstName, LastName, MiddleName, Email, CustomerCode
+--  TransformType values:
+--    direct               = value copied as-is (1:1)
+--    split_full_name      = parsed into First/Middle/Last tokens;
+--                           outputs defined in ImportColumnMappingOutputs
+--    split_full_address   = parsed into street/city/state/zip tokens;
+--                           outputs defined in ImportColumnMappingOutputs
+--    strip_credentials    = professional suffixes stripped before mapping
 --
---  FieldDefinitionId is used when MappingType = 'field_definition'
---  Must reference a FieldDefinition belonging to the same Organization.
+--  For TransformType = 'direct':
+--    DestinationField holds the target column name (customer / customer_address)
+--    FieldDefinitionId is used when DestinationTable = 'field_value'
 --
---  IsAutoMatched flags whether the mapping was set automatically
---  (header matched FieldKey or FieldLabel) or manually by the user.
+--  For split transforms:
+--    DestinationField and FieldDefinitionId are NULL on this row;
+--    child rows in ImportColumnMappingOutputs define each token destination.
 --
---  SavedForReuse = 1 means this mapping should be persisted and
---  used to auto-match future uploads with the same HeaderFingerprint.
+--  SavedForReuse = 1 means this mapping persists to SavedColumnMappings
+--  when the batch completes, keyed by HeaderFingerprint.
 -- ============================================================
 CREATE TABLE dbo.ImportColumnMappings (
-	[Id]					[uniqueidentifier]		NOT NULL	DEFAULT (newsequentialid()),
-	[ImportBatchId]			[uniqueidentifier]		NOT NULL,
-	[CsvHeader]				nvarchar(200)			NOT NULL,   -- exact header text from CSV
-	[CsvColumnIndex]		int						NOT NULL,   -- zero-based position in CSV
-	[MappingType]			nvarchar(20)			NOT NULL    DEFAULT ('skip'),
-    [CustomerFieldName]		nvarchar(100)			NULL,       -- e.g. 'FirstName', 'Email'
-    [FieldDefinitionId]		uniqueidentifier		NULL,
-    [IsAutoMatched]			bit						NOT NULL    DEFAULT 0,
-    [IsRequired]			bit						NOT NULL    DEFAULT 0,   -- copied from FieldDefinition
-    [SavedForReuse]			bit						NOT NULL    DEFAULT 1,
-    [DisplayOrder]			int						NOT NULL    DEFAULT 0,
+    [Id]                UNIQUEIDENTIFIER    NOT NULL    CONSTRAINT [DF_ImportColumnMappings_Id]               DEFAULT (NEWSEQUENTIALID()),
+    [ImportBatchId]     UNIQUEIDENTIFIER    NOT NULL,
+    [CsvHeader]         NVARCHAR(200)       NOT NULL,
+    [CsvColumnIndex]    INT                 NOT NULL,
+    [DestinationTable]  NVARCHAR(20)        NOT NULL    CONSTRAINT [DF_ImportColumnMappings_DestinationTable] DEFAULT ('skip'),
+    [DestinationField]  NVARCHAR(100)       NULL,
+    [FieldDefinitionId] UNIQUEIDENTIFIER    NULL,
+    [TransformType]     NVARCHAR(30)        NOT NULL    CONSTRAINT [DF_ImportColumnMappings_TransformType]    DEFAULT ('direct'),
+    [IsAutoMatched]     BIT                 NOT NULL    CONSTRAINT [DF_ImportColumnMappings_IsAutoMatched]    DEFAULT (0),
+    [IsRequired]        BIT                 NOT NULL    CONSTRAINT [DF_ImportColumnMappings_IsRequired]       DEFAULT (0),
+    [SavedForReuse]     BIT                 NOT NULL    CONSTRAINT [DF_ImportColumnMappings_SavedForReuse]    DEFAULT (1),
+    [DisplayOrder]      INT                 NOT NULL    CONSTRAINT [DF_ImportColumnMappings_DisplayOrder]     DEFAULT (0),
 
-	CONSTRAINT [PK_ImportColumnMappings] PRIMARY KEY CLUSTERED (Id),
+    CONSTRAINT [PK_ImportColumnMappings] PRIMARY KEY CLUSTERED ([Id]),
 
-	CONSTRAINT [FK_ImportColumnMappings_Batch]
-            FOREIGN KEY (ImportBatchId)
-            REFERENCES dbo.ImportBatches (Id),
+    CONSTRAINT [FK_ImportColumnMappings_Batch]
+        FOREIGN KEY ([ImportBatchId]) REFERENCES dbo.ImportBatches ([Id]),
 
-	CONSTRAINT [FK_ImportColumnMappings_FieldDefinition]
-            FOREIGN KEY (FieldDefinitionId)
-            REFERENCES dbo.FieldDefinitions (Id),
+    CONSTRAINT [FK_ImportColumnMappings_FieldDefinition]
+        FOREIGN KEY ([FieldDefinitionId]) REFERENCES dbo.FieldDefinitions ([Id]),
 
-	-- One mapping row per CSV/Excel header per batch
-	CONSTRAINT [UQ_ImportColumnMappings_Header] UNIQUE (ImportBatchId, CsvHeader),
+    CONSTRAINT [UQ_ImportColumnMappings_Header]
+        UNIQUE ([ImportBatchId], [CsvHeader]),
 
-	CONSTRAINT [CK_ImportColumnMappings_Type] CHECK (
-            MappingType IN ('customer_field', 'field_definition', 'skip')
-	),
+    CONSTRAINT [CK_ImportColumnMappings_DestinationTable] CHECK (
+        DestinationTable IN ('customer', 'customer_address', 'field_value', 'skip')
+    ),
 
-	-- CustomerFieldName must be a known Customers column
-    CONSTRAINT [CK_ImportColumnMappings_CustomerField] CHECK (
-        CustomerFieldName IS NULL OR CustomerFieldName IN (
-            'FirstName', 'LastName', 'MiddleName', 'Email', 'CustomerCode'
-        )
+    CONSTRAINT [CK_ImportColumnMappings_TransformType] CHECK (
+        TransformType IN ('direct', 'split_full_name', 'split_full_address', 'strip_credentials')
+    ),
+
+    -- For direct mappings, DestinationField must be a known column for the target table.
+    -- Split transforms store outputs in ImportColumnMappingOutputs; DestinationField is NULL.
+    CONSTRAINT [CK_ImportColumnMappings_DestinationField] CHECK (
+        DestinationTable IN ('skip', 'field_value')
+        OR TransformType <> 'direct'
+        OR (DestinationTable = 'customer' AND DestinationField IN (
+            'FirstName', 'LastName', 'MiddleName', 'MaidenName', 'DateOfBirth',
+            'Phone', 'Email', 'OriginalId', 'CustomerCode'
+        ))
+        OR (DestinationTable = 'customer_address' AND DestinationField IN (
+            'AddressLine1', 'AddressLine2', 'City', 'State', 'PostalCode',
+            'Country', 'AddressType', 'Latitude', 'Longitude'
+        ))
     )
-)	
+)
 GO
 
-CREATE INDEX [IX_ImportColumnMappings_Batch] ON dbo.ImportColumnMappings (ImportBatchId, DisplayOrder)
+CREATE INDEX [IX_ImportColumnMappings_Batch]
+    ON dbo.ImportColumnMappings ([ImportBatchId], [DisplayOrder])
 GO
 
-CREATE INDEX [IX_ImportColumnMappings_FieldDefinition] ON dbo.ImportColumnMappings (FieldDefinitionId)
+CREATE INDEX [IX_ImportColumnMappings_FieldDefinition]
+    ON dbo.ImportColumnMappings ([FieldDefinitionId])
 GO

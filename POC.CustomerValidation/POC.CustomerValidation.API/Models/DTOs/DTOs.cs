@@ -294,36 +294,45 @@ public record ApiError(
 
 public record CustomerDto
 {
-    public Guid     CustomerId      { get; init; }
-    public Guid     OrganizationId  { get; init; }
-    public string   FirstName       { get; init; } = default!;
-    public string   LastName        { get; init; } = default!;
-    public string?  MiddleName      { get; init; }
-    public string   CustomerCode    { get; init; } = default!;
-    public string?  OriginalId      { get; init; }
-    public string?  Email           { get; init; }
-    public bool     IsActive        { get; init; }
-    public DateTime CreatedDate     { get; init; }
-    public DateTime ModifiedDate    { get; init; }
+    public Guid      CustomerId      { get; init; }
+    public Guid      OrganizationId  { get; init; }
+    public string    FirstName       { get; init; } = default!;
+    public string    LastName        { get; init; } = default!;
+    public string?   MiddleName      { get; init; }
+    public string?   MaidenName      { get; init; }
+    public DateOnly? DateOfBirth     { get; init; }
+    public string    CustomerCode    { get; init; } = default!;
+    public string?   OriginalId      { get; init; }
+    public string?   Email           { get; init; }
+    public string?   Phone           { get; init; }
+    public bool      IsActive        { get; init; }
+    public DateTime  CreatedDate     { get; init; }
+    public DateTime  ModifiedDate    { get; init; }
 }
 
 public record CreateCustomerRequest
 {
-    public string   FirstName   { get; init; } = default!;
-    public string   LastName    { get; init; } = default!;
-    public string?  MiddleName  { get; init; }
-    public string?  OriginalId  { get; init; }
-    public string?  Email       { get; init; }
+    public string    FirstName   { get; init; } = default!;
+    public string    LastName    { get; init; } = default!;
+    public string?   MiddleName  { get; init; }
+    public string?   MaidenName  { get; init; }
+    public DateOnly? DateOfBirth { get; init; }
+    public string?   OriginalId  { get; init; }
+    public string?   Email       { get; init; }
+    public string?   Phone       { get; init; }
 }
 
 public record UpdateCustomerRequest
 {
-    public string   FirstName   { get; init; } = default!;
-    public string   LastName    { get; init; } = default!;
-    public string?  MiddleName  { get; init; }
-    public string?  OriginalId  { get; init; }
-    public string?  Email       { get; init; }
-    public bool     IsActive    { get; init; }
+    public string    FirstName   { get; init; } = default!;
+    public string    LastName    { get; init; } = default!;
+    public string?   MiddleName  { get; init; }
+    public string?   MaidenName  { get; init; }
+    public DateOnly? DateOfBirth { get; init; }
+    public string?   OriginalId  { get; init; }
+    public string?   Email       { get; init; }
+    public string?   Phone       { get; init; }
+    public bool      IsActive    { get; init; }
 }
 
 
@@ -469,11 +478,26 @@ public record ImportBatchDto
 
 public record UploadImportResponseDto
 {
-    public Guid                             BatchId         { get; init; }
-    public string[]                         Headers         { get; init; } = [];
-    public int                              RowCount        { get; init; }
-    public bool                             HasSavedMappings { get; init; }
-    public IEnumerable<ColumnMatchResultDto> ColumnMatches  { get; init; } = [];
+    public Guid                              BatchId              { get; init; }
+    public string[]                          Headers              { get; init; } = [];
+    public int                               RowCount             { get; init; }
+    public bool                              HasSavedMappings     { get; init; }
+    public IEnumerable<ColumnMatchResultDto> ColumnMatches        { get; init; } = [];
+    /// <summary>True when saved mappings exist but expected columns are missing from this upload.</summary>
+    public bool                              SchemaDrift          { get; init; }
+    /// <summary>Columns that were in the previous saved mapping but are absent from this file.</summary>
+    public string[]                          MissingMappedColumns { get; init; } = [];
+    /// <summary>Columns present in this file that were not in the previous saved mapping.</summary>
+    public string[]                          NewColumns           { get; init; } = [];
+}
+
+public record ColumnMappingOutputDto
+{
+    public string   OutputToken         { get; init; } = default!;
+    public string   DestinationTable    { get; init; } = "skip";
+    public string?  DestinationField    { get; init; }
+    public Guid?    FieldDefinitionId   { get; init; }
+    public int      SortOrder           { get; init; }
 }
 
 public record ColumnMatchResultDto
@@ -481,11 +505,13 @@ public record ColumnMatchResultDto
     public int      ColumnIndex         { get; init; }
     public string   CsvHeader           { get; init; } = default!;
     public string   MatchStatus         { get; init; } = default!;  // matched | unmatched | skipped
-    public string?  MappingType         { get; init; }
-    public string?  CustomerFieldName   { get; init; }
+    public string?  DestinationTable    { get; init; }
+    public string?  DestinationField    { get; init; }
     public Guid?    FieldDefinitionId   { get; init; }
+    public string?  TransformType       { get; init; }
     public string?  FieldLabel          { get; init; }
     public bool     IsAutoMatched       { get; init; }
+    public IEnumerable<ColumnMappingOutputDto> Outputs { get; init; } = [];
 }
 
 public record SaveMappingsRequest
@@ -498,10 +524,12 @@ public record ColumnMappingDto
 {
     public int      ColumnIndex         { get; init; }
     public string   CsvHeader           { get; init; } = default!;
-    public string   MappingType         { get; init; } = default!;
-    public string?  CustomerFieldName   { get; init; }
+    public string   DestinationTable    { get; init; } = "skip";
+    public string?  DestinationField    { get; init; }
     public Guid?    FieldDefinitionId   { get; init; }
-    public bool     SaveForReuse        { get; init; }
+    public string   TransformType       { get; init; } = "direct";
+    public bool     SaveForReuse        { get; init; } = true;
+    public IEnumerable<ColumnMappingOutputDto> Outputs { get; init; } = [];
 }
 
 public record ImportPreviewDto
@@ -578,6 +606,9 @@ public record CustomerAddressDto
     public string   State               { get; init; } = default!;
     public string   PostalCode          { get; init; } = default!;
     public string   Country             { get; init; } = "US";
+    public string   AddressType         { get; init; } = "primary";
+    public double?  Latitude            { get; init; }
+    public double?  Longitude           { get; init; }
     public bool     MelissaValidated    { get; init; }
     public bool     CustomerConfirmed   { get; init; }
     public bool     IsCurrent           { get; init; }
@@ -593,6 +624,71 @@ public record CreateCustomerAddressRequest
     public string   State           { get; init; } = default!;
     public string   PostalCode      { get; init; } = default!;
     public string   Country         { get; init; } = "US";
+    public string   AddressType     { get; init; } = "primary";
+    public double?  Latitude        { get; init; }
+    public double?  Longitude       { get; init; }
+}
+
+// -------------------------------------------------------
+// Customer Phone DTOs
+// -------------------------------------------------------
+
+public record CustomerPhoneDto
+{
+    public Guid     PhoneId         { get; init; }
+    public Guid     CustomerId      { get; init; }
+    public string   PhoneNumber     { get; init; } = default!;
+    public string   PhoneType       { get; init; } = default!;
+    public bool     IsPrimary       { get; init; }
+    public bool     IsActive        { get; init; }
+    public DateTime CreatedUtcDt    { get; init; }
+    public DateTime ModifiedUtcDt   { get; init; }
+}
+
+public record CreateCustomerPhoneRequest
+{
+    public string   PhoneNumber     { get; init; } = default!;
+    public string   PhoneType       { get; init; } = "mobile";
+    public bool     IsPrimary       { get; init; }
+}
+
+public record UpdateCustomerPhoneRequest
+{
+    public string   PhoneNumber     { get; init; } = default!;
+    public string   PhoneType       { get; init; } = default!;
+    public bool     IsPrimary       { get; init; }
+    public bool     IsActive        { get; init; }
+}
+
+// -------------------------------------------------------
+// Customer Email DTOs
+// -------------------------------------------------------
+
+public record CustomerEmailDto
+{
+    public Guid     EmailId         { get; init; }
+    public Guid     CustomerId      { get; init; }
+    public string   EmailAddress    { get; init; } = default!;
+    public string   EmailType       { get; init; } = default!;
+    public bool     IsPrimary       { get; init; }
+    public bool     IsActive        { get; init; }
+    public DateTime CreatedUtcDt    { get; init; }
+    public DateTime ModifiedUtcDt   { get; init; }
+}
+
+public record CreateCustomerEmailRequest
+{
+    public string   EmailAddress    { get; init; } = default!;
+    public string   EmailType       { get; init; } = "personal";
+    public bool     IsPrimary       { get; init; }
+}
+
+public record UpdateCustomerEmailRequest
+{
+    public string   EmailAddress    { get; init; } = default!;
+    public string   EmailType       { get; init; } = default!;
+    public bool     IsPrimary       { get; init; }
+    public bool     IsActive        { get; init; }
 }
 
 // -------------------------------------------------------

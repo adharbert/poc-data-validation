@@ -14,9 +14,12 @@ public class CustomerRepository(IDbConnectionFactory db) : ICustomerRepository
             ,   FirstName
             ,   LastName
             ,   MiddleName
+            ,   MaidenName
+            ,   DateOfBirth
             ,   CustomerCode
             ,   OriginalId
             ,   Email
+            ,   Phone
             ,   IsActive
             ,   CreatedDt       AS CreatedDate
             ,   ModifiedDt      AS ModifiedDate
@@ -39,9 +42,12 @@ public class CustomerRepository(IDbConnectionFactory db) : ICustomerRepository
                 ,   FirstName
                 ,   LastName
                 ,   MiddleName
+                ,   MaidenName
+                ,   DateOfBirth
                 ,   CustomerCode
                 ,   OriginalId
                 ,   Email
+                ,   Phone
                 ,   IsActive
                 ,   CreatedDt       AS CreatedDate
                 ,   ModifiedDt      AS ModifiedDate
@@ -88,8 +94,8 @@ public class CustomerRepository(IDbConnectionFactory db) : ICustomerRepository
         customer.ModifiedDate = DateTime.UtcNow;
 
         const string sql = """
-            INSERT INTO Customers (Id, OrganizationId, FirstName, LastName, MiddleName, CustomerCode, OriginalId, Email, IsActive, CreatedDt, ModifiedDt)
-            VALUES (@CustomerId, @OrganizationId, @FirstName, @LastName, @MiddleName, @CustomerCode, @OriginalId, @Email, @IsActive, @CreatedDate, @ModifiedDate)
+            INSERT INTO Customers (Id, OrganizationId, FirstName, LastName, MiddleName, MaidenName, DateOfBirth, CustomerCode, OriginalId, Email, Phone, IsActive, CreatedDt, ModifiedDt)
+            VALUES (@CustomerId, @OrganizationId, @FirstName, @LastName, @MiddleName, @MaidenName, @DateOfBirth, @CustomerCode, @OriginalId, @Email, @Phone, @IsActive, @CreatedDate, @ModifiedDate)
             """;
         using var conn = _db.CreateConnection();
         await conn.ExecuteAsync(sql, customer);
@@ -105,8 +111,11 @@ public class CustomerRepository(IDbConnectionFactory db) : ICustomerRepository
             SET     FirstName       = @FirstName
                 ,   LastName        = @LastName
                 ,   MiddleName      = @MiddleName
+                ,   MaidenName      = @MaidenName
+                ,   DateOfBirth     = @DateOfBirth
                 ,   OriginalId      = @OriginalId
                 ,   Email           = @Email
+                ,   Phone           = @Phone
                 ,   IsActive        = @IsActive
                 ,   ModifiedDt      = @ModifiedDate
             WHERE   Id = @CustomerId

@@ -31,29 +31,47 @@ Step 2: Auto-match
   System compares CSV headers against:
     - FieldDefinitions.FieldKey    (exact match)
     - FieldDefinitions.FieldLabel  (case-insensitive)
-    - Customer column names:       FirstName, LastName, MiddleName, Email
+    - Customer column names:       FirstName, LastName, MiddleName, MaidenName,
+                                   DateOfBirth, Email, Phone, OriginalId
+    - Address column names:        AddressLine1, AddressLine2, City, State,
+                                   PostalCode, Country, AddressType
   Each header is flagged as:
     ✓ Matched    — auto-matched, shown in green
     ⚠ Unmatched  — needs manual mapping, shown in amber
     — Skipped    — admin marks as not needed
 
 Step 3: Map unmatched
-  Admin assigns each unmatched header to a target using a dropdown.
-  Targets are grouped:
-    ── Customer fields ──────────────────
-       First name
-       Last name
-       Middle name
-       Email
-       (CustomerCode excluded — system generated)
+  Each column mapping has three parts:
+    1. Destination table   — Customer | Address | Key/Value | Skip
+    2. Destination field   — field picker filtered by chosen table
+    3. Transform           — Direct (1:1) | Split Full Name
 
-    ── Field definitions (Client name) ──
-       Date of birth          [date]
-       Phone number           [text]
-       Street address         [text]
-       State                  [dropdown]
-       Highest degree         [dropdown]
-       ...
+  ── Customer fields ──────────────────
+     FirstName, LastName, MiddleName, MaidenName, DateOfBirth,
+     Email, Phone, OriginalId
+     (CustomerCode excluded — system generated)
+
+  ── Address fields ───────────────────
+     AddressLine1, AddressLine2, City, State, PostalCode,
+     Country, AddressType
+
+  ── Key/Value fields (org-specific) ──
+     Highest Degree, Phone Number, etc. — loaded from FieldDefinitions
+
+  ── Skip ────────────────────────────
+     Column is ignored during import
+
+  Split Full Name transform:
+    Select a source column containing a full name and choose
+    "Split Full Name". Output tokens (FirstName, MiddleName,
+    LastName, Suffix, Credentials) each get their own destination
+    assignment in an expandable panel. Unneeded tokens can be
+    set to Skip. The parser handles formats like:
+      "Almena L. Free , M.D."  →  First=Almena  Middle=L  Last=Free  Credentials=M.D.
+      "John Smith Jr."         →  First=John  Last=Smith  Suffix=Jr.
+    State columns with full names ("Alabama") are automatically
+    converted to 2-letter codes when mapped to the State address field.
+
   Admin cannot proceed until every header is mapped OR skipped.
   For dropdown/multiselect fields: optional value translation step
   (e.g. "Bachelor's Degree" → bach).
@@ -68,9 +86,11 @@ Step 5: Import (server-side)
   For each data row:
     1. Generate CustomerCode from Org.Abbreviation + ULID
     2. Check for duplicate (by Email) — apply DuplicateStrategy
-    3. INSERT into Customers
-    4. INSERT/UPDATE FieldValues rows per mapped field column
-    5. Write errors to ImportErrors for any failed rows
+    3. INSERT into Customers (direct + split_full_name fields)
+    4. INSERT into CustomerAddresses if any address field is mapped
+       (requires at minimum AddressLine1 + City)
+    5. INSERT/UPDATE FieldValues rows per mapped field_value column
+    6. Write errors to ImportErrors for any failed rows
   Update ImportBatch counters and status on completion.
   Save successful mappings to SavedColumnMappings for reuse.
 ```
@@ -184,9 +204,11 @@ See `DATABASE.md` for full column definitions.
 |---|---|
 | `ImportBatches` | One per file upload, tracks lifecycle |
 | `ImportColumnMappings` | Column-to-field mappings per batch |
+| `ImportColumnMappingOutputs` | Per-token output assignments for split transforms |
 | `ImportValueMappings` | Value translation rules per column |
 | `ImportErrors` | Failed rows with error details |
 | `SavedColumnMappings` | Reusable mappings per org + fingerprint |
+| `SavedColumnMappingOutputs` | Saved per-token output assignments for split transforms |
 
 ---
 

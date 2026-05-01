@@ -140,7 +140,7 @@ Create a new field definition.
 }
 ```
 
-**Valid fieldType values:** `text`, `number`, `date`, `datetime`, `boolean`, `checkbox`, `dropdown`, `multiselect`, `phone`
+**Valid fieldType values:** `text`, `number`, `date`, `datetime`, `checkbox`, `dropdown`, `multiselect`, `phone`
 
 **`displayFormat`** — only used when `fieldType` is `phone`. Controls how stored digits are rendered.
 Valid values: `"(XXX) XXX-XXXX"`, `"XXX-XXX-XXXX"`, `"XXX.XXX.XXXX"`. Null for all other field types.
@@ -741,6 +741,39 @@ Check for saved column mappings. Returns array of `ColumnMatchResultDto` (empty 
 
 ### POST /api/organisations/{organisationId}/imports/{batchId}/mappings
 Save column mappings for a batch. Advances status to `preview`. Body: `SaveMappingsRequest`.
+
+**`ColumnMatchResultDto` / `ColumnMappingDto` shape** (used in saved-mappings response and mapping request body):
+```json
+{
+  "csvHeader": "Full Name",
+  "csvColumnIndex": 2,
+  "destinationTable": "customer",
+  "destinationField": null,
+  "transformType": "split_full_name",
+  "fieldDefinitionId": null,
+  "isAutoMatched": false,
+  "isRequired": false,
+  "savedForReuse": true,
+  "displayOrder": 2,
+  "outputs": [
+    { "outputToken": "FirstName",    "destinationTable": "customer", "destinationField": "FirstName",    "fieldDefinitionId": null, "sortOrder": 1 },
+    { "outputToken": "MiddleName",   "destinationTable": "customer", "destinationField": "MiddleName",   "fieldDefinitionId": null, "sortOrder": 2 },
+    { "outputToken": "LastName",     "destinationTable": "customer", "destinationField": "LastName",     "fieldDefinitionId": null, "sortOrder": 3 },
+    { "outputToken": "Suffix",       "destinationTable": "skip",     "destinationField": null,           "fieldDefinitionId": null, "sortOrder": 4 },
+    { "outputToken": "Credentials",  "destinationTable": "skip",     "destinationField": null,           "fieldDefinitionId": null, "sortOrder": 5 }
+  ]
+}
+```
+
+**`destinationTable` values:** `customer` | `customer_address` | `field_value` | `skip`
+
+**`destinationField` by table:**
+- `customer` → `FirstName`, `LastName`, `MiddleName`, `MaidenName`, `DateOfBirth`, `Email`, `Phone`, `OriginalId`
+- `customer_address` → `AddressLine1`, `AddressLine2`, `City`, `State`, `PostalCode`, `Country`, `AddressType`
+- `field_value` → leave `null`; set `fieldDefinitionId` instead
+- `skip` → leave `null`
+
+**`transformType` values:** `direct` (1:1 mapping) | `split_full_name` (parses name parts via `FullNameParser`; requires `outputs` array)
 
 ---
 

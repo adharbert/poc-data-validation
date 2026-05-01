@@ -353,7 +353,10 @@ public interface IImportRepository
     /// <summary>Returns all column mappings for a batch.</summary>
     Task<IEnumerable<ImportColumnMapping>> GetMappingsByBatchIdAsync(Guid batchId);
 
-    /// <summary>Replaces all column mappings for a batch in a single transaction.</summary>
+    /// <summary>Returns split-transform output assignments for all mappings in a batch.</summary>
+    Task<IEnumerable<ImportColumnMappingOutput>> GetMappingOutputsByBatchIdAsync(Guid batchId);
+
+    /// <summary>Replaces all column mappings (and their split outputs) for a batch in a single transaction.</summary>
     Task SaveMappingsAsync(Guid batchId, IEnumerable<ImportColumnMapping> mappings);
 
     /// <summary>Writes a row error to ImportErrors.</summary>
@@ -452,6 +455,38 @@ public class FieldPreviewRaw
     public decimal? ValueNumber         { get; set; }
     public DateOnly? ValueDate          { get; set; }
     public bool?    ValueBoolean        { get; set; }
+}
+
+
+public interface ICustomerPhoneRepository
+{
+    /// <summary>Returns all phone numbers for a customer.</summary>
+    Task<IEnumerable<CustomerPhone>> GetByCustomerIdAsync(Guid customerId);
+
+    /// <summary>Creates a new phone record.</summary>
+    Task<CustomerPhone> CreateAsync(CustomerPhone phone);
+
+    /// <summary>Updates an existing phone record.</summary>
+    Task<bool> UpdateAsync(CustomerPhone phone);
+
+    /// <summary>Activates or deactivates a phone record.</summary>
+    Task<bool> ChangeStatusAsync(Guid phoneId, bool isActive);
+}
+
+
+public interface ICustomerEmailRepository
+{
+    /// <summary>Returns all email addresses for a customer.</summary>
+    Task<IEnumerable<CustomerEmail>> GetByCustomerIdAsync(Guid customerId);
+
+    /// <summary>Creates a new email record.</summary>
+    Task<CustomerEmail> CreateAsync(CustomerEmail email);
+
+    /// <summary>Updates an existing email record.</summary>
+    Task<bool> UpdateAsync(CustomerEmail email);
+
+    /// <summary>Activates or deactivates an email record.</summary>
+    Task<bool> ChangeStatusAsync(Guid emailId, bool isActive);
 }
 
 

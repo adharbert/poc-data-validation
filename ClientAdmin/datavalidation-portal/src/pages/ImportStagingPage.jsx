@@ -29,15 +29,19 @@ function ResolveModal({ orgId, staging, onClose }) {
 
   const { register, handleSubmit, watch, formState: { errors } } = useForm({
     defaultValues: {
-      status:           'resolved',
-      mappingType:      staging.mappingType      ?? 'customer_field',
-      customerFieldName:staging.customerFieldName ?? '',
-      notes:            staging.notes            ?? '',
+      status:            'resolved',
+      mappingType:       staging.mappingType       ?? 'customer_field',
+      customerFieldName: staging.customerFieldName ?? '',
+      notes:             staging.notes             ?? '',
     },
   })
 
   const status      = watch('status')
   const mappingType = watch('mappingType')
+
+  // Note: ImportColumnStaging still uses legacy mappingType/customerFieldName column names.
+  // The resolve request preserves those names so the staging table continues to work
+  // until a future migration aligns it with the new schema.
 
   async function onSubmit(values) {
     try {
@@ -83,8 +87,9 @@ function ResolveModal({ orgId, staging, onClose }) {
                   <div className="mb-3">
                     <label className="form-label fw-semibold">Map to</label>
                     <select className="form-select" {...register('mappingType')}>
-                      <option value="customer_field">Standard customer field</option>
-                      <option value="field_definition">Custom field definition</option>
+                      <option value="customer_field">Customer field</option>
+                      <option value="customer_address">Address field</option>
+                      <option value="field_definition">Key / Value field</option>
                     </select>
                   </div>
 
@@ -97,9 +102,29 @@ function ResolveModal({ orgId, staging, onClose }) {
                         <option value="FirstName">First Name</option>
                         <option value="LastName">Last Name</option>
                         <option value="MiddleName">Middle Name</option>
+                        <option value="MaidenName">Maiden Name</option>
+                        <option value="DateOfBirth">Date of Birth</option>
                         <option value="Email">Email</option>
                         <option value="Phone">Phone</option>
                         <option value="OriginalId">Client ID (OriginalId)</option>
+                      </select>
+                      {errors.customerFieldName && <div className="invalid-feedback">{errors.customerFieldName.message}</div>}
+                    </div>
+                  )}
+
+                  {mappingType === 'customer_address' && (
+                    <div className="mb-3">
+                      <label className="form-label fw-semibold">Address Field <span className="text-danger">*</span></label>
+                      <select className={`form-select ${errors.customerFieldName ? 'is-invalid' : ''}`}
+                        {...register('customerFieldName', { required: status === 'resolved' ? 'Required' : false })}>
+                        <option value="">Select…</option>
+                        <option value="AddressLine1">Address Line 1</option>
+                        <option value="AddressLine2">Address Line 2</option>
+                        <option value="City">City</option>
+                        <option value="State">State</option>
+                        <option value="PostalCode">Postal Code</option>
+                        <option value="Country">Country</option>
+                        <option value="AddressType">Address Type</option>
                       </select>
                       {errors.customerFieldName && <div className="invalid-feedback">{errors.customerFieldName.message}</div>}
                     </div>

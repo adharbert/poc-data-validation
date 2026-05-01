@@ -4,6 +4,8 @@ CREATE TABLE [dbo].[Customers] (
 	[FirstName]				nvarchar(30)		NOT NULL,
 	[LastName]				nvarchar(50)		NOT NULL,
 	[MiddleName]			nvarchar(30)		NULL,
+	[MaidenName]			nvarchar(50)		NULL,
+	[DateOfBirth]			date				NULL,
 	[CustomerCode]			[nvarchar](26)		NOT NULL,
 	[OrganizationId]		[uniqueidentifier]	NOT NULL,
 	[Email]					nvarchar(150)		NULL,

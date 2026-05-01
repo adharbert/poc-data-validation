@@ -463,8 +463,10 @@ function PreviewPanel({ organizationId }) {
     const val = field.currentValue ?? ''
     const baseProps = { className: 'form-control form-control-sm', disabled: true, readOnly: true }
 
-    if (field.fieldType === 'boolean')
-      return <input type="checkbox" className="form-check-input" disabled checked={val === 'True'} readOnly />
+    if (field.fieldType === 'checkbox') {
+      const checked = val === '1' || val === 'true' || val === 'True'
+      return <input type="text" {...baseProps} value={val === '' ? '' : checked ? 'Yes' : 'No'} />
+    }
     if (field.fieldType === 'date')
       return <input type="date" {...baseProps} value={val} />
     if (field.fieldType === 'number')

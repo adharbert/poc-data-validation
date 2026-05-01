@@ -17,11 +17,18 @@ public class ImportService(
     IFieldDefinitionRepository fieldRepo,
     IOrganizationRepository orgRepo,
     ICustomerRepository customerRepo,
+    ICustomerPhoneRepository phoneRepo,
+    ICustomerEmailRepository emailRepo,
+    ICustomerAddressRepository customerAddressRepo,
     IFieldValueRepository fieldValueRepo,
     IConfiguration config,
     ILogger<ImportService> log) : IImportService
 {
-    private static readonly string[] CustomerFields = ["FirstName", "LastName", "MiddleName", "Email", "OriginalId"];
+    private static readonly string[] CustomerFields =
+        ["FirstName", "LastName", "MiddleName", "MaidenName", "DateOfBirth", "Email", "Phone", "OriginalId"];
+
+    private static readonly string[] AddressFields =
+        ["AddressLine1", "AddressLine2", "City", "State", "PostalCode", "Country", "AddressType", "Latitude", "Longitude"];
 
     public async Task<UploadImportResponseDto> UploadAsync(
         Guid organisationId, IFormFile file, string uploadedBy, string duplicateStrategy = "skip")
@@ -68,6 +75,15 @@ public class ImportService(
         var savedMappings   = (await importRepo.GetSavedMappingsAsync(organisationId, fingerprint)).ToList();
         var hasSaved        = savedMappings.Count > 0;
 
+        // Schema drift detection — compare current headers against the org's saved template
+        var (missingMapped, newCols) = DetectSchemaDrift(headers, savedMappings);
+        var schemaDrift = missingMapped.Length > 0;
+
+        if (schemaDrift)
+            log.LogWarning(
+                "Schema drift detected for org {OrgId}: missing mapped columns [{Missing}]",
+                organisationId, string.Join(", ", missingMapped));
+
         // Auto-match each column
         var fieldDefs   = (await fieldRepo.GetByOrganizationIdAsync(organisationId)).ToList();
         var matches     = await AutoMatchHeaders(headers, fieldDefs, savedMappings, organisationId);
@@ -91,11 +107,14 @@ public class ImportService(
 
         return new UploadImportResponseDto
         {
-            BatchId         = batch.BatchId,
-            Headers         = headers,
-            RowCount        = rowCount,
-            HasSavedMappings = hasSaved,
-            ColumnMatches   = matches,
+            BatchId              = batch.BatchId,
+            Headers              = headers,
+            RowCount             = rowCount,
+            HasSavedMappings     = hasSaved,
+            ColumnMatches        = matches,
+            SchemaDrift          = schemaDrift,
+            MissingMappedColumns = missingMapped,
+            NewColumns           = newCols,
         };
     }
 
@@ -115,9 +134,10 @@ public class ImportService(
                 ColumnIndex         = s.CsvColumnIndex,
                 CsvHeader           = s.CsvHeader,
                 MatchStatus         = "matched",
-                MappingType         = s.MappingType,
-                CustomerFieldName   = s.CustomerFieldName,
+                DestinationTable    = s.DestinationTable,
+                DestinationField    = s.DestinationField,
                 FieldDefinitionId   = s.FieldDefinitionId,
+                TransformType       = s.TransformType,
                 FieldLabel          = fd?.FieldLabel,
                 IsAutoMatched       = false,
             };
@@ -134,12 +154,21 @@ public class ImportService(
             ImportBatchId       = batchId,
             CsvHeader           = m.CsvHeader,
             CsvColumnIndex      = m.ColumnIndex,
-            MappingType         = m.MappingType,
-            CustomerFieldName   = m.CustomerFieldName,
+            DestinationTable    = m.DestinationTable,
+            DestinationField    = m.DestinationField,
             FieldDefinitionId   = m.FieldDefinitionId,
+            TransformType       = m.TransformType,
             IsAutoMatched       = false,
             SavedForReuse       = m.SaveForReuse,
             DisplayOrder        = i,
+            Outputs             = m.Outputs.Select(o => new ImportColumnMappingOutput
+            {
+                OutputToken         = o.OutputToken,
+                DestinationTable    = o.DestinationTable,
+                DestinationField    = o.DestinationField,
+                FieldDefinitionId   = o.FieldDefinitionId,
+                SortOrder           = o.SortOrder,
+            }).ToList(),
         }).ToList();
 
         await importRepo.SaveMappingsAsync(batchId, mappings);
@@ -194,6 +223,12 @@ public class ImportService(
 
         var org = await orgRepo.GetByIdAsync(batch.OrganizationId)!;
         var mappings    = (await importRepo.GetMappingsByBatchIdAsync(batchId)).ToList();
+        var outputs     = (await importRepo.GetMappingOutputsByBatchIdAsync(batchId)).ToList();
+        // Attach outputs to their parent mappings for use in ExtractCustomerFields
+        var outputsByMapping = outputs.GroupBy(o => o.MappingId).ToDictionary(g => g.Key, g => g.ToList());
+        foreach (var m in mappings)
+            if (outputsByMapping.TryGetValue(m.MappingId, out var mo))
+                m.Outputs = mo;
         var fieldDefs   = await GetFieldDefsForBatch(mappings);
         var allRows     = ReadFileRows(batch.FileStoragePath!, batch.FileType!);
 
@@ -205,6 +240,7 @@ public class ImportService(
             try
             {
                 var customerData    = ExtractCustomerFields(row, mappings);
+                var addressData     = ExtractAddressFields(row, mappings);
                 var fieldValues     = ExtractFieldValues(row, mappings);
 
                 // Deduplication by Email
@@ -240,19 +276,50 @@ public class ImportService(
                         FirstName       = customerData.FirstName ?? throw new InvalidOperationException("FirstName is required."),
                         LastName        = customerData.LastName ?? throw new InvalidOperationException("LastName is required."),
                         MiddleName      = customerData.MiddleName,
+                        MaidenName      = customerData.MaidenName,
+                        DateOfBirth     = customerData.DateOfBirth,
                         OriginalId      = customerData.OriginalId,
                         Email           = customerData.Email,
+                        Phone           = customerData.Phone,
                         CustomerCode    = code,
                         IsActive        = true,
                     };
                     existing = await customerRepo.CreateAsync(customer);
+
+                    if (!string.IsNullOrWhiteSpace(customerData.Phone))
+                        await phoneRepo.CreateAsync(new CustomerPhone
+                        {
+                            CustomerId  = existing.CustomerId,
+                            PhoneNumber = customerData.Phone,
+                            PhoneType   = "mobile",
+                            IsPrimary   = true,
+                        });
+
+                    if (!string.IsNullOrWhiteSpace(customerData.Email))
+                        await emailRepo.CreateAsync(new CustomerEmail
+                        {
+                            CustomerId   = existing.CustomerId,
+                            EmailAddress = customerData.Email,
+                            EmailType    = "personal",
+                            IsPrimary    = true,
+                        });
+
+                    if (addressData is not null)
+                    {
+                        addressData.CustomerId = existing.CustomerId;
+                        await customerAddressRepo.CreateAsync(addressData);
+                    }
                 }
                 else if (batch.DuplicateStrategy == "update")
                 {
-                    existing.FirstName  = customerData.FirstName ?? existing.FirstName;
-                    existing.LastName   = customerData.LastName  ?? existing.LastName;
-                    existing.MiddleName = customerData.MiddleName ?? existing.MiddleName;
-                    existing.OriginalId = customerData.OriginalId ?? existing.OriginalId;
+                    existing.FirstName   = customerData.FirstName  ?? existing.FirstName;
+                    existing.LastName    = customerData.LastName   ?? existing.LastName;
+                    existing.MiddleName  = customerData.MiddleName ?? existing.MiddleName;
+                    existing.MaidenName  = customerData.MaidenName ?? existing.MaidenName;
+                    existing.DateOfBirth = customerData.DateOfBirth ?? existing.DateOfBirth;
+                    existing.OriginalId  = customerData.OriginalId ?? existing.OriginalId;
+                    existing.Email       = customerData.Email  ?? existing.Email;
+                    existing.Phone       = customerData.Phone  ?? existing.Phone;
                     await customerRepo.UpdateAsync(existing);
                 }
 
@@ -297,9 +364,10 @@ public class ImportService(
             HeaderFingerprint   = batch.HeaderFingerprint,
             CsvHeader           = m.CsvHeader,
             CsvColumnIndex      = m.CsvColumnIndex,
-            MappingType         = m.MappingType,
-            CustomerFieldName   = m.CustomerFieldName,
+            DestinationTable    = m.DestinationTable,
+            DestinationField    = m.DestinationField,
             FieldDefinitionId   = m.FieldDefinitionId,
+            TransformType       = m.TransformType,
             DisplayOrder        = m.DisplayOrder,
         }).ToList();
 
@@ -426,9 +494,10 @@ public class ImportService(
                     ColumnIndex         = i,
                     CsvHeader           = header,
                     MatchStatus         = "matched",
-                    MappingType         = saved.MappingType,
-                    CustomerFieldName   = saved.CustomerFieldName,
+                    DestinationTable    = saved.DestinationTable,
+                    DestinationField    = saved.DestinationField,
                     FieldDefinitionId   = saved.FieldDefinitionId,
+                    TransformType       = saved.TransformType,
                     FieldLabel          = fd?.FieldLabel,
                     IsAutoMatched       = false,
                 });
@@ -444,8 +513,26 @@ public class ImportService(
                     ColumnIndex         = i,
                     CsvHeader           = header,
                     MatchStatus         = "matched",
-                    MappingType         = "customer_field",
-                    CustomerFieldName   = custField,
+                    DestinationTable    = "customer",
+                    DestinationField    = custField,
+                    TransformType       = "direct",
+                    IsAutoMatched       = true,
+                });
+                continue;
+            }
+
+            // Address field match (case-insensitive)
+            var addrField = AddressFields.FirstOrDefault(f => f.Equals(trimmed, StringComparison.OrdinalIgnoreCase));
+            if (addrField is not null)
+            {
+                result.Add(new ColumnMatchResultDto
+                {
+                    ColumnIndex         = i,
+                    CsvHeader           = header,
+                    MatchStatus         = "matched",
+                    DestinationTable    = "customer_address",
+                    DestinationField    = addrField,
+                    TransformType       = "direct",
                     IsAutoMatched       = true,
                 });
                 continue;
@@ -460,8 +547,9 @@ public class ImportService(
                     ColumnIndex         = i,
                     CsvHeader           = header,
                     MatchStatus         = "matched",
-                    MappingType         = "field_definition",
+                    DestinationTable    = "field_value",
                     FieldDefinitionId   = byKey.FieldDefinitionId,
+                    TransformType       = "direct",
                     FieldLabel          = byKey.FieldLabel,
                     IsAutoMatched       = true,
                 });
@@ -477,8 +565,9 @@ public class ImportService(
                     ColumnIndex         = i,
                     CsvHeader           = header,
                     MatchStatus         = "matched",
-                    MappingType         = "field_definition",
+                    DestinationTable    = "field_value",
                     FieldDefinitionId   = byLabel.FieldDefinitionId,
+                    TransformType       = "direct",
                     FieldLabel          = byLabel.FieldLabel,
                     IsAutoMatched       = true,
                 });
@@ -490,6 +579,13 @@ public class ImportService(
             var staging = await stagingRepo.GetByHeaderAsync(organisationId, norm);
             if (staging?.Status == "resolved" && staging.MappingType is not null)
             {
+                // Staging table still uses legacy MappingType/CustomerFieldName — translate on read
+                var stagingDestTable = staging.MappingType switch
+                {
+                    "customer_field"   => "customer",
+                    "field_definition" => "field_value",
+                    _                  => "skip",
+                };
                 var fd = staging.FieldDefinitionId.HasValue
                     ? fieldDefs.FirstOrDefault(f => f.FieldDefinitionId == staging.FieldDefinitionId.Value)
                     : null;
@@ -498,9 +594,10 @@ public class ImportService(
                     ColumnIndex         = i,
                     CsvHeader           = header,
                     MatchStatus         = "matched",
-                    MappingType         = staging.MappingType,
-                    CustomerFieldName   = staging.CustomerFieldName,
+                    DestinationTable    = stagingDestTable,
+                    DestinationField    = staging.CustomerFieldName,
                     FieldDefinitionId   = staging.FieldDefinitionId,
+                    TransformType       = "direct",
                     FieldLabel          = fd?.FieldLabel,
                     IsAutoMatched       = false,
                 });
@@ -531,30 +628,107 @@ public class ImportService(
         return result;
     }
 
-    private static (string? FirstName, string? LastName, string? MiddleName, string? Email, string? OriginalId)
+    private static (string? FirstName, string? LastName, string? MiddleName, string? MaidenName,
+                    DateOnly? DateOfBirth, string? Email, string? Phone, string? OriginalId)
         ExtractCustomerFields(string?[] row, List<ImportColumnMapping> mappings)
     {
-        string? fn = null, ln = null, mn = null, email = null, origId = null;
-        foreach (var m in mappings.Where(m => m.MappingType == "customer_field"))
+        string? fn = null, ln = null, mn = null, maiden = null, email = null, phone = null, origId = null;
+        DateOnly? dob = null;
+
+        foreach (var m in mappings.Where(m => m.DestinationTable == "customer"))
         {
-            var value = m.CsvColumnIndex < row.Length ? row[m.CsvColumnIndex]?.Trim() : null;
-            switch (m.CustomerFieldName)
+            var rawValue = m.CsvColumnIndex < row.Length ? row[m.CsvColumnIndex]?.Trim() : null;
+
+            if (m.TransformType == "split_full_name")
             {
-                case "FirstName":   fn      = value; break;
-                case "LastName":    ln      = value; break;
-                case "MiddleName":  mn      = value; break;
-                case "Email":       email   = value?.ToLowerInvariant(); break;
-                case "OriginalId":  origId  = value; break;
+                var (pFirst, pMiddle, pLast, _, _) = FullNameParser.Parse(rawValue);
+                foreach (var o in m.Outputs)
+                {
+                    if (o.DestinationTable != "customer") continue;
+                    var parsed = o.OutputToken switch
+                    {
+                        "FirstName"  => pFirst,
+                        "MiddleName" => pMiddle,
+                        "LastName"   => pLast,
+                        _            => null,
+                    };
+                    ApplyCustomerField(o.DestinationField, parsed, ref fn, ref ln, ref mn, ref maiden, ref email, ref phone, ref origId, ref dob);
+                }
+            }
+            else
+            {
+                ApplyCustomerField(m.DestinationField, rawValue, ref fn, ref ln, ref mn, ref maiden, ref email, ref phone, ref origId, ref dob);
             }
         }
-        return (fn, ln, mn, email, origId);
+        return (fn, ln, mn, maiden, dob, email, phone, origId);
+    }
+
+    private static void ApplyCustomerField(
+        string? fieldName, string? value,
+        ref string? fn, ref string? ln, ref string? mn, ref string? maiden,
+        ref string? email, ref string? phone, ref string? origId, ref DateOnly? dob)
+    {
+        switch (fieldName)
+        {
+            case "FirstName":   fn      = value; break;
+            case "LastName":    ln      = value; break;
+            case "MiddleName":  mn      = value; break;
+            case "MaidenName":  maiden  = value; break;
+            case "Email":       email   = value?.ToLowerInvariant(); break;
+            case "Phone":       phone   = string.IsNullOrWhiteSpace(value) ? null
+                                            : Regex.Replace(value, @"\D", ""); break;
+            case "OriginalId":  origId  = value; break;
+            case "DateOfBirth":
+                if (!string.IsNullOrWhiteSpace(value) && DateOnly.TryParse(value, out var parsed))
+                    dob = parsed;
+                break;
+        }
+    }
+
+    private static CustomerAddress? ExtractAddressFields(string?[] row, List<ImportColumnMapping> mappings)
+    {
+        var addrMappings = mappings.Where(m => m.DestinationTable == "customer_address").ToList();
+        if (addrMappings.Count == 0) return null;
+
+        var addr = new CustomerAddress { AddressType = "primary" };
+        bool hasData = false;
+
+        foreach (var m in addrMappings)
+        {
+            var value = m.CsvColumnIndex < row.Length ? row[m.CsvColumnIndex]?.Trim() : null;
+            if (string.IsNullOrWhiteSpace(value)) continue;
+            hasData = true;
+            switch (m.DestinationField)
+            {
+                case "AddressLine1": addr.AddressLine1 = value; break;
+                case "AddressLine2": addr.AddressLine2 = value; break;
+                case "City":         addr.City         = value; break;
+                case "State":        addr.State        = value.Length > 2
+                                         ? StateLookup.ToCode(value) ?? value[..2].ToUpper()
+                                         : value.ToUpper(); break;
+                case "PostalCode":   addr.PostalCode   = value; break;
+                case "Country":      addr.Country      = value; break;
+                case "AddressType":  addr.AddressType  = value; break;
+                case "Latitude":
+                    if (double.TryParse(value, out var lat)) addr.Latitude = lat;
+                    break;
+                case "Longitude":
+                    if (double.TryParse(value, out var lng)) addr.Longitude = lng;
+                    break;
+            }
+        }
+
+        // Require at minimum AddressLine1 and City to create a record
+        return hasData && !string.IsNullOrWhiteSpace(addr.AddressLine1) && !string.IsNullOrWhiteSpace(addr.City)
+            ? addr
+            : null;
     }
 
     private static List<(Guid FieldDefinitionId, string? Value)> ExtractFieldValues(
         string?[] row, List<ImportColumnMapping> mappings)
     {
         var result = new List<(Guid, string?)>();
-        foreach (var m in mappings.Where(m => m.MappingType == "field_definition" && m.FieldDefinitionId.HasValue))
+        foreach (var m in mappings.Where(m => m.DestinationTable == "field_value" && m.FieldDefinitionId.HasValue))
         {
             var value = m.CsvColumnIndex < row.Length ? row[m.CsvColumnIndex]?.Trim() : null;
             result.Add((m.FieldDefinitionId!.Value, value));
@@ -565,18 +739,60 @@ public class ImportService(
     private static (string Status, string? Message) ValidateRow(
         string?[] row, List<ImportColumnMapping> mappings, Dictionary<Guid, FieldDefinition> fieldDefs)
     {
-        foreach (var m in mappings.Where(m => m.IsRequired || m.MappingType == "customer_field"))
+        foreach (var m in mappings.Where(m => m.IsRequired || m.DestinationTable == "customer"))
         {
             var value = m.CsvColumnIndex < row.Length ? row[m.CsvColumnIndex]?.Trim() : null;
             if (string.IsNullOrEmpty(value))
             {
-                if (m.MappingType == "customer_field" && m.CustomerFieldName is "FirstName" or "LastName")
-                    return ("error", $"{m.CustomerFieldName} is required.");
+                if (m.DestinationTable == "customer" && m.DestinationField is "FirstName" or "LastName"
+                    && m.TransformType == "direct")
+                    return ("error", $"{m.DestinationField} is required.");
                 if (m.IsRequired)
                     return ("error", $"'{m.CsvHeader}' is required but empty.");
             }
         }
+
+        // Contactability: at least one of Email or Phone required when either is mapped
+        var contactMappings = mappings
+            .Where(m => m.DestinationTable == "customer" && m.DestinationField is "Email" or "Phone")
+            .ToList();
+
+        if (contactMappings.Count > 0)
+        {
+            var hasContact = contactMappings.Any(m =>
+            {
+                var v = m.CsvColumnIndex < row.Length ? row[m.CsvColumnIndex]?.Trim() : null;
+                return !string.IsNullOrEmpty(v);
+            });
+            if (!hasContact)
+                return ("error", "At least one contact method (Phone or Email) is required.");
+        }
+
         return ("ok", null);
+    }
+
+    private static (string[] Missing, string[] New) DetectSchemaDrift(
+        string[] currentHeaders, List<SavedColumnMapping> savedMappings)
+    {
+        if (savedMappings.Count == 0)
+            return ([], []);
+
+        var savedHeaders    = savedMappings.Select(s => s.CsvHeader.Trim()).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var currentSet      = currentHeaders.Select(h => h.Trim()).ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        // Columns that were previously mapped (not skipped) but are missing now
+        var missing = savedMappings
+            .Where(s => s.DestinationTable != "skip" && !currentSet.Contains(s.CsvHeader.Trim()))
+            .Select(s => s.CsvHeader)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        // Columns in the current file that weren't in the saved mapping
+        var newCols = currentHeaders
+            .Where(h => !savedHeaders.Contains(h.Trim()))
+            .ToArray();
+
+        return (missing, newCols);
     }
 
     private static string ComputeFingerprint(string[] headers)
@@ -588,6 +804,77 @@ public class ImportService(
 
     private static string GenerateCustomerCode(string abbreviation)
         => $"{abbreviation}-{Ulid.NewUlid().ToString()[..10]}";
+
+    // ------------------------------------------------------------------
+    // Name / state helpers
+    // ------------------------------------------------------------------
+
+    private static class FullNameParser
+    {
+        private static readonly Regex CredentialRx = new(
+            @"^(?:M\.D\.|D\.O\.|Ph\.D\.|M\.P\.H\.|M\.B\.A\.|D\.D\.S\.|D\.V\.M\.|R\.N\.|N\.P\.|Esq\.?)$",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+        private static readonly Regex SuffixRx = new(
+            @"^(?:Jr\.|Sr\.|III|II|IV)$",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+        private static readonly Regex DeceasedRx = new(
+            @"\s*\(deceased\)\s*", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+        public static (string? First, string? Middle, string? Last, string? Suffix, string? Credentials)
+            Parse(string? fullName)
+        {
+            if (string.IsNullOrWhiteSpace(fullName))
+                return (null, null, null, null, null);
+
+            // Split on " , " to separate name from trailing credential/suffix tokens
+            var parts = fullName.Split(" , ", StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
+
+            string? suffix = null;
+            var credParts  = new List<string>();
+            while (parts.Count > 1)
+            {
+                var tail = parts[^1];
+                if (CredentialRx.IsMatch(tail))      { credParts.Insert(0, tail); parts.RemoveAt(parts.Count - 1); }
+                else if (SuffixRx.IsMatch(tail))     { suffix = tail;              parts.RemoveAt(parts.Count - 1); }
+                else break;
+            }
+
+            var namePart = DeceasedRx.Replace(string.Join(" ", parts), " ").Trim();
+            var words    = namePart.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            var creds    = credParts.Count > 0 ? string.Join(", ", credParts) : null;
+
+            return words.Length switch
+            {
+                0 => (null,     null,                              null,       suffix, creds),
+                1 => (words[0], null,                              null,       suffix, creds),
+                2 => (words[0], null,                              words[1],   suffix, creds),
+                _ => (words[0], string.Join(" ", words[1..^1]),    words[^1],  suffix, creds),
+            };
+        }
+    }
+
+    private static class StateLookup
+    {
+        private static readonly Dictionary<string, string> _map = new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["Alabama"]="AL",["Alaska"]="AK",["Arizona"]="AZ",["Arkansas"]="AR",["California"]="CA",
+            ["Colorado"]="CO",["Connecticut"]="CT",["Delaware"]="DE",["Florida"]="FL",["Georgia"]="GA",
+            ["Hawaii"]="HI",["Idaho"]="ID",["Illinois"]="IL",["Indiana"]="IN",["Iowa"]="IA",
+            ["Kansas"]="KS",["Kentucky"]="KY",["Louisiana"]="LA",["Maine"]="ME",["Maryland"]="MD",
+            ["Massachusetts"]="MA",["Michigan"]="MI",["Minnesota"]="MN",["Mississippi"]="MS",
+            ["Missouri"]="MO",["Montana"]="MT",["Nebraska"]="NE",["Nevada"]="NV",["New Hampshire"]="NH",
+            ["New Jersey"]="NJ",["New Mexico"]="NM",["New York"]="NY",["North Carolina"]="NC",
+            ["North Dakota"]="ND",["Ohio"]="OH",["Oklahoma"]="OK",["Oregon"]="OR",["Pennsylvania"]="PA",
+            ["Rhode Island"]="RI",["South Carolina"]="SC",["South Dakota"]="SD",["Tennessee"]="TN",
+            ["Texas"]="TX",["Utah"]="UT",["Vermont"]="VT",["Virginia"]="VA",["Washington"]="WA",
+            ["West Virginia"]="WV",["Wisconsin"]="WI",["Wyoming"]="WY",["District of Columbia"]="DC",
+        };
+
+        public static string? ToCode(string fullName) =>
+            _map.TryGetValue(fullName.Trim(), out var code) ? code : null;
+    }
 
     private static ImportBatchDto MapBatch(ImportBatch b) => new()
     {

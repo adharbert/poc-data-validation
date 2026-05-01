@@ -68,6 +68,9 @@
   <ItemGroup>
     <!-- Schema objects — compiled into the DACPAC model -->
     <Build Include="dbo\Tables\Contracts.sql" />
+    <Build Include="dbo\Tables\CustomerAddresses.sql" />
+    <Build Include="dbo\Tables\CustomerEmails.sql" />
+    <Build Include="dbo\Tables\CustomerPhones.sql" />
     <Build Include="dbo\Tables\Customers.sql" />
     <Build Include="dbo\Tables\FieldDefinitions.sql" />
     <Build Include="dbo\Tables\FieldOptions.sql" />
@@ -77,12 +80,14 @@
     <Build Include="dbo\Tables\FieldValuesHistory.sql" />
     <Build Include="dbo\Tables\ImportBatches.sql" />
     <Build Include="dbo\Tables\ImportColumnMappings.sql" />
+    <Build Include="dbo\Tables\ImportColumnMappingOutputs.sql" />
     <Build Include="dbo\Tables\ImportColumnStaging.sql" />
     <Build Include="dbo\Tables\ImportErrors.sql" />
     <Build Include="dbo\Tables\ImportValueMappings.sql" />
     <Build Include="dbo\Tables\MarketingProjects.sql" />
     <Build Include="dbo\Tables\Organizations.sql" />
     <Build Include="dbo\Tables\SavedColumnMappings.sql" />
+    <Build Include="dbo\Tables\SavedColumnMappingOutputs.sql" />
     <Build Include="dbo\Tables\ValidationSessions.sql" />
     <Build Include="dbo\Views\vCustomerFieldValues.sql" />
     <!-- Post-deployment script (runs automatically after DACPAC deploy) -->
@@ -99,18 +104,30 @@
     <!-- Reference / seed data scripts (not deployed automatically) -->
     <None Include="scripts\Post-Deployment\01_StateOptions.sql" />
     <None Include="scripts\Post-Deployment\02_HighestSchoolingOptions.sql" />
-    <None Include="scripts\Post-Deployment\DEVOnly_03_Organizations-Fake.sql" />
-    <None Include="scripts\Post-Deployment\DevOnly_04_CustomerSampleData.sql" />
+    <None Include="scripts\Post-Deployment\DEVOnly_01_Organizations-Fake.sql" />
+    <None Include="scripts\Post-Deployment\DevOnly_02_CustomerSampleData.sql" />
     <None Include="scripts\Migrations\Migration_003_FieldDefinitions_Phone.sql">
       <SuppressTSqlWarnings>71006</SuppressTSqlWarnings>
     </None>
-    <None Include="scripts\Migrations\Migration_004_CustomerAddresses.sql">
+    <None Include="scripts\Migrations\Migration_004_Customers_CoreFields.sql">
       <SuppressTSqlWarnings>71006</SuppressTSqlWarnings>
     </None>
-    <None Include="scripts\Post-Deployment\05_Contract_3CFDCADA.sql">
+    <None Include="scripts\Migrations\Migration_005_CustomerAddresses_AddressType.sql">
       <SuppressTSqlWarnings>71006</SuppressTSqlWarnings>
     </None>
-    <None Include="scripts\Post-Deployment\06_MarketingProject_ADX.sql">
+    <None Include="scripts\Migrations\Migration_006b_CustomerAddresses_GeographyPoint.sql">
+      <SuppressTSqlWarnings>71006</SuppressTSqlWarnings>
+    </None>
+    <None Include="scripts\Migrations\Migration_007_ColumnMappings_Transform.sql">
+      <SuppressTSqlWarnings>71006</SuppressTSqlWarnings>
+    </None>
+    <None Include="scripts\Post-Deployment\03_Contract_3CFDCADA.sql">
+      <SuppressTSqlWarnings>71006</SuppressTSqlWarnings>
+    </None>
+    <None Include="scripts\Post-Deployment\04_MarketingProject_ADX.sql">
+      <SuppressTSqlWarnings>71006</SuppressTSqlWarnings>
+    </None>
+    <None Include="scripts\Migrations\Migration_006_CustomerAddresses_GeoFields.sql">
       <SuppressTSqlWarnings>71006</SuppressTSqlWarnings>
     </None>
   </ItemGroup>

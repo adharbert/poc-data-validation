@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import {
-  useOrganization,
+  useOrganization, useFields,
   useUploadImport, useSaveMappings, usePreviewImport,
   useExecuteImport, useImportBatch, useImportBatches,
 } from '@/hooks/useApi.js'
@@ -13,15 +13,50 @@ import { fmtDate } from '@/utils/dates.js'
 
 const STEPS = ['Upload', 'Map Columns', 'Preview', 'Execute', 'Done']
 
-const CUSTOMER_FIELDS = [
-  { value: 'skip',        label: '— Skip this column —' },
-  { value: 'FirstName',   label: 'First Name',   group: 'Customer Field' },
-  { value: 'LastName',    label: 'Last Name',    group: 'Customer Field' },
-  { value: 'MiddleName',  label: 'Middle Name',  group: 'Customer Field' },
-  { value: 'Email',       label: 'Email',        group: 'Customer Field' },
-  { value: 'Phone',       label: 'Phone',        group: 'Customer Field' },
-  { value: 'OriginalId',  label: 'Client ID (OriginalId)', group: 'Customer Field' },
+const DEST_TABLES = [
+  { value: 'skip',             label: '— Skip —' },
+  { value: 'customer',         label: 'Customer' },
+  { value: 'customer_address', label: 'Address' },
+  { value: 'field_value',      label: 'Key / Value Field' },
 ]
+
+const CUSTOMER_FIELDS = [
+  { value: 'FirstName',    label: 'First Name' },
+  { value: 'LastName',     label: 'Last Name' },
+  { value: 'MiddleName',   label: 'Middle Name' },
+  { value: 'MaidenName',   label: 'Maiden Name' },
+  { value: 'DateOfBirth',  label: 'Date of Birth' },
+  { value: 'Email',        label: 'Email' },
+  { value: 'Phone',        label: 'Phone' },
+  { value: 'OriginalId',   label: 'Client ID (OriginalId)' },
+  { value: 'CustomerCode', label: 'Customer Code' },
+]
+
+const ADDRESS_FIELDS = [
+  { value: 'AddressLine1', label: 'Address Line 1' },
+  { value: 'AddressLine2', label: 'Address Line 2' },
+  { value: 'City',         label: 'City' },
+  { value: 'State',        label: 'State' },
+  { value: 'PostalCode',   label: 'Postal Code' },
+  { value: 'Country',      label: 'Country' },
+  { value: 'AddressType',  label: 'Address Type' },
+  { value: 'Latitude',     label: 'Latitude' },
+  { value: 'Longitude',    label: 'Longitude' },
+]
+
+const DEFAULT_SPLIT_FULL_NAME_OUTPUTS = [
+  { outputToken: 'FirstName',   destinationTable: 'customer', destinationField: 'FirstName',  sortOrder: 0 },
+  { outputToken: 'MiddleName',  destinationTable: 'customer', destinationField: 'MiddleName', sortOrder: 1 },
+  { outputToken: 'LastName',    destinationTable: 'customer', destinationField: 'LastName',   sortOrder: 2 },
+  { outputToken: 'Suffix',      destinationTable: 'skip',     destinationField: null,         sortOrder: 3 },
+  { outputToken: 'Credentials', destinationTable: 'skip',     destinationField: null,         sortOrder: 4 },
+]
+
+function fieldsForTable(table) {
+  if (table === 'customer')         return CUSTOMER_FIELDS
+  if (table === 'customer_address') return ADDRESS_FIELDS
+  return []
+}
 
 // ---------------------------------------------------------------------------
 // Step indicator
@@ -123,34 +158,168 @@ function StepUpload({ orgId, onUploaded }) {
 // ---------------------------------------------------------------------------
 // Step 2 — Map Columns
 // ---------------------------------------------------------------------------
-function StepMapping({ orgId, batch, autoMatches, onSaved }) {
+function MappingRow({ m, index, fieldDefs, onChange }) {
+  const [showOutputs, setShowOutputs] = useState(false)
+
+  function handleTableChange(table) {
+    const update = { destinationTable: table, destinationField: null, fieldDefinitionId: null, transformType: 'direct', outputs: [] }
+    onChange(index, update)
+  }
+
+  function handleFieldChange(field) {
+    onChange(index, { destinationField: field })
+  }
+
+  function handleTransformChange(transform) {
+    const outputs = transform === 'split_full_name' ? DEFAULT_SPLIT_FULL_NAME_OUTPUTS : []
+    onChange(index, { transformType: transform, destinationField: null, outputs })
+  }
+
+  function handleFieldDefChange(id) {
+    onChange(index, { fieldDefinitionId: id || null })
+  }
+
+  function handleOutputFieldChange(tokenIndex, field) {
+    const outputs = m.outputs.map((o, ti) =>
+      ti === tokenIndex ? { ...o, destinationField: field || null, destinationTable: field ? o.destinationTable : 'skip' } : o
+    )
+    onChange(index, { outputs })
+  }
+
+  const isSplit  = m.transformType === 'split_full_name'
+  const fields   = fieldsForTable(m.destinationTable)
+
+  return (
+    <div className="border-bottom py-2">
+      <div className="d-flex align-items-center gap-2 flex-wrap">
+        {/* CSV header */}
+        <div style={{ minWidth: 160, flex: '0 0 auto' }}>
+          <span className="font-monospace" style={{ fontSize: '.85rem' }}>{m.csvHeader}</span>
+          {m.isAutoMatched && (
+            <span className="ms-2 badge bg-success bg-opacity-75" style={{ fontSize: '.6rem' }}>auto</span>
+          )}
+        </div>
+
+        <span className="text-muted" style={{ fontSize: '.8rem' }}>→</span>
+
+        {/* Destination table */}
+        <select
+          className="form-select form-select-sm"
+          style={{ width: 'auto', minWidth: 140 }}
+          value={m.destinationTable}
+          onChange={e => handleTableChange(e.target.value)}
+        >
+          {DEST_TABLES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+        </select>
+
+        {/* Destination field — hidden for field_value (uses FieldDefinition picker) and skip */}
+        {m.destinationTable === 'customer' || m.destinationTable === 'customer_address' ? (
+          !isSplit ? (
+            <select
+              className="form-select form-select-sm"
+              style={{ width: 'auto', minWidth: 150 }}
+              value={m.destinationField ?? ''}
+              onChange={e => handleFieldChange(e.target.value || null)}
+            >
+              <option value="">— Select field —</option>
+              {fields.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
+            </select>
+          ) : (
+            <span className="badge bg-primary bg-opacity-15 text-primary border border-primary px-2 py-1" style={{ fontSize: '.75rem' }}>
+              Split → First / Middle / Last
+            </span>
+          )
+        ) : null}
+
+        {/* FieldDefinition picker for field_value */}
+        {m.destinationTable === 'field_value' && (
+          <select
+            className="form-select form-select-sm"
+            style={{ width: 'auto', minWidth: 180 }}
+            value={m.fieldDefinitionId ?? ''}
+            onChange={e => handleFieldDefChange(e.target.value)}
+          >
+            <option value="">— Select field —</option>
+            {fieldDefs.map(fd => <option key={fd.fieldDefinitionId} value={fd.fieldDefinitionId}>{fd.fieldLabel}</option>)}
+          </select>
+        )}
+
+        {/* Transform toggle — only for customer table */}
+        {m.destinationTable === 'customer' && (
+          <select
+            className="form-select form-select-sm"
+            style={{ width: 'auto', minWidth: 130 }}
+            value={m.transformType}
+            onChange={e => handleTransformChange(e.target.value)}
+          >
+            <option value="direct">Direct (1:1)</option>
+            <option value="split_full_name">Split Full Name</option>
+          </select>
+        )}
+
+        {/* Expand outputs for split transforms */}
+        {isSplit && (
+          <button
+            type="button"
+            className="btn btn-sm btn-link p-0 text-muted"
+            style={{ fontSize: '.75rem' }}
+            onClick={() => setShowOutputs(v => !v)}
+          >
+            {showOutputs ? '▲ Hide' : '▼ Outputs'}
+          </button>
+        )}
+      </div>
+
+      {/* Split output token assignments */}
+      {isSplit && showOutputs && (
+        <div className="ms-4 mt-2 ps-3 border-start" style={{ borderColor: '#e5e7eb' }}>
+          {m.outputs.map((o, ti) => (
+            <div key={o.outputToken} className="d-flex align-items-center gap-2 mb-1" style={{ fontSize: '.8rem' }}>
+              <span className="font-monospace text-muted" style={{ minWidth: 90 }}>{o.outputToken}</span>
+              <span className="text-muted">→</span>
+              <select
+                className="form-select form-select-sm"
+                style={{ width: 'auto', minWidth: 150 }}
+                value={o.destinationField ?? ''}
+                onChange={e => handleOutputFieldChange(ti, e.target.value)}
+              >
+                <option value="">— Skip —</option>
+                {CUSTOMER_FIELDS.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
+              </select>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function StepMapping({ orgId, batch, autoMatches, fieldDefs, onSaved }) {
   const toast    = useToast()
   const save     = useSaveMappings(orgId)
+
   const [mappings, setMappings] = useState(() =>
-    autoMatches.map(m => ({
-      csvHeader:         m.csvHeader,
-      csvColumnIndex:    m.columnIndex ?? 0,
-      mappingType:       m.mappingType ?? 'customer_field',
-      customerFieldName: m.customerFieldName ?? 'skip',
-      fieldDefinitionId: m.fieldDefinitionId ?? null,
-      isAutoMatched:     m.isAutoMatched ?? false,
-      displayOrder:      m.displayOrder ?? 0,
+    autoMatches.map((m, i) => ({
+      csvHeader:        m.csvHeader,
+      csvColumnIndex:   m.columnIndex ?? i,
+      destinationTable: m.destinationTable ?? 'skip',
+      destinationField: m.destinationField ?? null,
+      fieldDefinitionId:m.fieldDefinitionId ?? null,
+      transformType:    m.transformType ?? 'direct',
+      isAutoMatched:    m.isAutoMatched ?? false,
+      saveForReuse:     true,
+      displayOrder:     i,
+      outputs:          m.outputs ?? [],
     }))
   )
 
-  function setMapping(index, key, value) {
-    setMappings(prev => prev.map((m, i) => i === index ? { ...m, [key]: value } : m))
+  function handleChange(index, patch) {
+    setMappings(prev => prev.map((m, i) => i === index ? { ...m, ...patch } : m))
   }
 
   async function handleSave() {
-    const payload = {
-      mappings: mappings.map(m => ({
-        ...m,
-        customerFieldName: m.customerFieldName === 'skip' ? null : m.customerFieldName,
-      })),
-    }
     try {
-      await save.mutateAsync({ batchId: batch.batchId, data: payload })
+      await save.mutateAsync({ batchId: batch.batchId, data: { mappings } })
       toast('Mappings saved.')
       onSaved()
     } catch (err) {
@@ -166,36 +335,21 @@ function StepMapping({ orgId, batch, autoMatches, onSaved }) {
         Auto-matched columns are pre-filled.
       </p>
 
-      <div className="admin-card mb-3 p-0">
-        <div style={{ padding: '0 1.25rem' }}>
-          {/* Header row */}
-          <div className="mapping-row" style={{ fontWeight: 600, fontSize: '.75rem', textTransform: 'uppercase', color: '#6b7280' }}>
-            <span>CSV Header</span>
-            <span className="mapping-arrow"></span>
-            <span>Map To</span>
-          </div>
-
-          {mappings.map((m, i) => (
-            <div key={m.csvHeader} className="mapping-row">
-              <div>
-                <span className="font-monospace" style={{ fontSize: '.875rem' }}>{m.csvHeader}</span>
-                {m.isAutoMatched && (
-                  <span className="ms-2 badge bg-success bg-opacity-75" style={{ fontSize: '.65rem' }}>auto</span>
-                )}
-              </div>
-              <span className="mapping-arrow">→</span>
-              <select
-                className="form-select form-select-sm"
-                value={m.customerFieldName ?? 'skip'}
-                onChange={e => setMapping(i, 'customerFieldName', e.target.value)}
-              >
-                {CUSTOMER_FIELDS.map(f => (
-                  <option key={f.value} value={f.value}>{f.label}</option>
-                ))}
-              </select>
-            </div>
-          ))}
+      <div className="admin-card mb-3" style={{ padding: '0 1.25rem' }}>
+        <div className="d-flex gap-2 py-2 border-bottom" style={{ fontWeight: 600, fontSize: '.7rem', textTransform: 'uppercase', color: '#6b7280' }}>
+          <span style={{ minWidth: 160 }}>CSV Header</span>
+          <span style={{ width: 8 }}></span>
+          <span>Destination</span>
         </div>
+        {mappings.map((m, i) => (
+          <MappingRow
+            key={m.csvHeader}
+            m={m}
+            index={i}
+            fieldDefs={fieldDefs}
+            onChange={handleChange}
+          />
+        ))}
       </div>
 
       <button className="btn btn-primary" onClick={handleSave} disabled={save.isPending}>
@@ -499,7 +653,9 @@ function ImportHistory({ orgId }) {
 // ---------------------------------------------------------------------------
 export default function ImportPage() {
   const { organizationId } = useParams()
-  const { data: org } = useOrganization(organizationId)
+  const { data: org }      = useOrganization(organizationId)
+  const { data: fieldDefsPage } = useFields(organizationId)
+  const fieldDefs = fieldDefsPage?.items ?? fieldDefsPage ?? []
   const [step, setStep]         = useState(0)
   const [uploadResult, setUploadResult] = useState(null)
 
@@ -553,6 +709,7 @@ export default function ImportPage() {
             orgId={organizationId}
             batch={uploadResult}
             autoMatches={uploadResult.columnMatches ?? []}
+            fieldDefs={fieldDefs}
             onSaved={handleMappingsSaved}
           />
         )}

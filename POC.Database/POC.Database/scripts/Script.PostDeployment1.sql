@@ -57,7 +57,7 @@ GO
 --GO
 --:r .\Post-Deployment\02_HighestSchoolingOptions.sql
 --GO
-:r .\Migrations\Migration_004_CustomerAddresses.sql
-GO
+--:r .\Migrations\Migration_006b_CustomerAddresses_GeographyPoint.sql
+--GO
 
 PRINT 'PostDeploy completed successfully.';

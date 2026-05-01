@@ -17,6 +17,9 @@ public class CustomerAddressRepository(IDbConnectionFactory db) : ICustomerAddre
             ,   State
             ,   PostalCode
             ,   Country
+            ,   AddressType
+            ,   Latitude
+            ,   Longitude
             ,   MelissaValidated
             ,   CustomerConfirmed
             ,   IsCurrent
@@ -59,25 +62,29 @@ public class CustomerAddressRepository(IDbConnectionFactory db) : ICustomerAddre
         address.CreatedUtcDt  = DateTime.UtcNow;
         address.ModifiedUtcDt = DateTime.UtcNow;
 
+        // Only retire addresses of the same type — a vacation address doesn't affect the primary
         const string clearCurrentSql = """
             UPDATE  CustomerAddresses
             SET     IsCurrent     = 0
                 ,   ModifiedUtcDt = @Now
-            WHERE   CustomerId = @CustomerId
-              AND   IsCurrent  = 1
+            WHERE   CustomerId  = @CustomerId
+              AND   AddressType = @AddressType
+              AND   IsCurrent   = 1
             """;
 
         const string insertSql = """
             INSERT INTO CustomerAddresses
                 (Id, CustomerId, AddressLine1, AddressLine2, City, State, PostalCode, Country,
+                 AddressType, Latitude, Longitude,
                  MelissaValidated, CustomerConfirmed, IsCurrent, CreatedUtcDt, ModifiedUtcDt)
             VALUES
                 (@AddressId, @CustomerId, @AddressLine1, @AddressLine2, @City, @State, @PostalCode, @Country,
+                 @AddressType, @Latitude, @Longitude,
                  @MelissaValidated, @CustomerConfirmed, @IsCurrent, @CreatedUtcDt, @ModifiedUtcDt)
             """;
 
         using var conn = _db.CreateConnection();
-        await conn.ExecuteAsync(clearCurrentSql, new { CustomerId = address.CustomerId, Now = address.CreatedUtcDt });
+        await conn.ExecuteAsync(clearCurrentSql, new { address.CustomerId, address.AddressType, Now = address.CreatedUtcDt });
         await conn.ExecuteAsync(insertSql, address);
         return address;
     }

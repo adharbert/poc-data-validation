@@ -120,7 +120,7 @@ public class FieldDefinitionService(IFieldDefinitionRepository fieldRepo, IField
         {
             "number"   => r.ValueNumber?.ToString(),
             "date"     => r.ValueDate?.ToString("yyyy-MM-dd"),
-            "boolean"  => r.ValueBoolean?.ToString(),
+            "checkbox"  => r.ValueBoolean.HasValue ? (r.ValueBoolean.Value ? "1" : "0") : null,
             _          => r.ValueText,
         };
 

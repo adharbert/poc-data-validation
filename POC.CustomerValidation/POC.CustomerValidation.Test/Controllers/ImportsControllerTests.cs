@@ -143,6 +143,44 @@ public class ImportsControllerTests
         _importMock.Verify(s => s.GetSavedMappingsAsync(_orgId, "abc"), Times.Once);
     }
 
+    [Fact]
+    public async Task GetSavedMappings_ReturnsMappingsWithDestinationFields()
+    {
+        var match = BuildDirectMatchResult();
+        _importMock.Setup(s => s.GetSavedMappingsAsync(_orgId, "fp1")).ReturnsAsync([match]);
+
+        var result = await CreateSut().GetSavedMappings(_orgId, "fp1");
+
+        var ok    = Assert.IsType<OkObjectResult>(result);
+        var list  = Assert.IsAssignableFrom<IEnumerable<ColumnMatchResultDto>>(ok.Value);
+        var first = Assert.Single(list);
+        Assert.Equal("customer",  first.DestinationTable);
+        Assert.Equal("FirstName", first.DestinationField);
+        Assert.Equal("direct",    first.TransformType);
+        Assert.True(first.IsAutoMatched);
+    }
+
+    [Fact]
+    public async Task GetSavedMappings_ReturnsSplitTransformWithOutputs()
+    {
+        var match = BuildSplitMatchResult();
+        _importMock.Setup(s => s.GetSavedMappingsAsync(_orgId, "fp2")).ReturnsAsync([match]);
+
+        var result = await CreateSut().GetSavedMappings(_orgId, "fp2");
+
+        var ok    = Assert.IsType<OkObjectResult>(result);
+        var list  = Assert.IsAssignableFrom<IEnumerable<ColumnMatchResultDto>>(ok.Value);
+        var first = Assert.Single(list);
+        Assert.Equal("split_full_name", first.TransformType);
+        Assert.Equal(5, first.Outputs.Count());
+        var fn = first.Outputs.Single(o => o.OutputToken == "FirstName");
+        Assert.Equal("customer",  fn.DestinationTable);
+        Assert.Equal("FirstName", fn.DestinationField);
+        var cred = first.Outputs.Single(o => o.OutputToken == "Credentials");
+        Assert.Equal("skip", cred.DestinationTable);
+        Assert.Null(cred.DestinationField);
+    }
+
     // ── SaveMappings ──────────────────────────────────────────────────────────
 
     [Fact]
@@ -167,6 +205,55 @@ public class ImportsControllerTests
         await CreateSut().SaveMappings(_orgId, batchId, request);
 
         _importMock.Verify(s => s.SaveMappingsAsync(batchId, request), Times.Once);
+    }
+
+    [Fact]
+    public async Task SaveMappings_WithDirectMapping_PassesDestinationTableAndField()
+    {
+        var batchId = Guid.NewGuid();
+        var request = new SaveMappingsRequest
+        {
+            DuplicateStrategy = "skip",
+            Mappings          = [BuildDirectMapping(), BuildAddressMapping()],
+        };
+        _importMock.Setup(s => s.SaveMappingsAsync(batchId, request)).Returns(Task.CompletedTask);
+
+        var result = await CreateSut().SaveMappings(_orgId, batchId, request);
+
+        Assert.IsType<NoContentResult>(result);
+        _importMock.Verify(s => s.SaveMappingsAsync(batchId, request), Times.Once);
+        var customer = request.Mappings.First();
+        Assert.Equal("customer", customer.DestinationTable);
+        Assert.Equal("Email",    customer.DestinationField);
+        Assert.Equal("direct",   customer.TransformType);
+        var address = request.Mappings.Last();
+        Assert.Equal("customer_address", address.DestinationTable);
+        Assert.Equal("AddressLine1",     address.DestinationField);
+    }
+
+    [Fact]
+    public async Task SaveMappings_WithSplitTransform_PassesOutputTokens()
+    {
+        var batchId = Guid.NewGuid();
+        var request = new SaveMappingsRequest
+        {
+            DuplicateStrategy = "skip",
+            Mappings          = [BuildSplitMapping()],
+        };
+        _importMock.Setup(s => s.SaveMappingsAsync(batchId, request)).Returns(Task.CompletedTask);
+
+        await CreateSut().SaveMappings(_orgId, batchId, request);
+
+        _importMock.Verify(s => s.SaveMappingsAsync(batchId, request), Times.Once);
+        var mapping = request.Mappings.Single();
+        Assert.Equal("split_full_name", mapping.TransformType);
+        Assert.Null(mapping.DestinationField);
+        Assert.Equal(5, mapping.Outputs.Count());
+        Assert.Contains(mapping.Outputs, o => o.OutputToken == "FirstName"    && o.DestinationTable == "customer" && o.DestinationField == "FirstName");
+        Assert.Contains(mapping.Outputs, o => o.OutputToken == "MiddleName"   && o.DestinationTable == "customer" && o.DestinationField == "MiddleName");
+        Assert.Contains(mapping.Outputs, o => o.OutputToken == "LastName"     && o.DestinationTable == "customer" && o.DestinationField == "LastName");
+        Assert.Contains(mapping.Outputs, o => o.OutputToken == "Suffix"       && o.DestinationTable == "skip");
+        Assert.Contains(mapping.Outputs, o => o.OutputToken == "Credentials"  && o.DestinationTable == "skip");
     }
 
     // ── Preview ───────────────────────────────────────────────────────────────
@@ -352,5 +439,73 @@ public class ImportsControllerTests
         Status      = "pending",
         FirstSeenAt = DateTime.UtcNow,
         LastSeenAt  = DateTime.UtcNow,
+    };
+
+    private static ColumnMatchResultDto BuildDirectMatchResult() => new()
+    {
+        ColumnIndex      = 0,
+        CsvHeader        = "first_name",
+        MatchStatus      = "matched",
+        DestinationTable = "customer",
+        DestinationField = "FirstName",
+        TransformType    = "direct",
+        IsAutoMatched    = true,
+    };
+
+    private static ColumnMatchResultDto BuildSplitMatchResult() => new()
+    {
+        ColumnIndex      = 1,
+        CsvHeader        = "full_name",
+        MatchStatus      = "unmatched",
+        DestinationTable = "customer",
+        DestinationField = null,
+        TransformType    = "split_full_name",
+        IsAutoMatched    = false,
+        Outputs          =
+        [
+            new() { OutputToken = "FirstName",   DestinationTable = "customer", DestinationField = "FirstName",   SortOrder = 1 },
+            new() { OutputToken = "MiddleName",  DestinationTable = "customer", DestinationField = "MiddleName",  SortOrder = 2 },
+            new() { OutputToken = "LastName",    DestinationTable = "customer", DestinationField = "LastName",    SortOrder = 3 },
+            new() { OutputToken = "Suffix",      DestinationTable = "skip",     DestinationField = null,          SortOrder = 4 },
+            new() { OutputToken = "Credentials", DestinationTable = "skip",     DestinationField = null,          SortOrder = 5 },
+        ],
+    };
+
+    private static ColumnMappingDto BuildDirectMapping() => new()
+    {
+        ColumnIndex      = 0,
+        CsvHeader        = "email",
+        DestinationTable = "customer",
+        DestinationField = "Email",
+        TransformType    = "direct",
+        SaveForReuse     = true,
+    };
+
+    private static ColumnMappingDto BuildAddressMapping() => new()
+    {
+        ColumnIndex      = 1,
+        CsvHeader        = "address_line1",
+        DestinationTable = "customer_address",
+        DestinationField = "AddressLine1",
+        TransformType    = "direct",
+        SaveForReuse     = true,
+    };
+
+    private static ColumnMappingDto BuildSplitMapping() => new()
+    {
+        ColumnIndex      = 2,
+        CsvHeader        = "full_name",
+        DestinationTable = "customer",
+        DestinationField = null,
+        TransformType    = "split_full_name",
+        SaveForReuse     = true,
+        Outputs          =
+        [
+            new() { OutputToken = "FirstName",   DestinationTable = "customer", DestinationField = "FirstName",   SortOrder = 1 },
+            new() { OutputToken = "MiddleName",  DestinationTable = "customer", DestinationField = "MiddleName",  SortOrder = 2 },
+            new() { OutputToken = "LastName",    DestinationTable = "customer", DestinationField = "LastName",    SortOrder = 3 },
+            new() { OutputToken = "Suffix",      DestinationTable = "skip",     DestinationField = null,          SortOrder = 4 },
+            new() { OutputToken = "Credentials", DestinationTable = "skip",     DestinationField = null,          SortOrder = 5 },
+        ],
     };
 }
