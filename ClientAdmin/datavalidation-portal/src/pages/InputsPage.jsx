@@ -474,12 +474,9 @@ function PreviewPanel({ organizationId }) {
     if (field.fieldType === 'phone')
       return <input type="text" {...baseProps} value={formatPhone(val, field.displayFormat)} />
     if (field.fieldType === 'dropdown') {
-      return (
-        <select className="form-select form-select-sm" disabled value={val}>
-          <option value="">— select —</option>
-          {field.options?.map(o => <option key={o.optionId} value={o.optionKey}>{o.optionLabel || o.optionKey}</option>)}
-        </select>
-      )
+      const selected = field.options?.find(o => o.optionKey === val)
+      const displayVal = selected ? (selected.optionLabel || selected.optionKey) : val
+      return <input type="text" {...baseProps} value={displayVal} />
     }
     return <input type="text" {...baseProps} value={val} />
   }
