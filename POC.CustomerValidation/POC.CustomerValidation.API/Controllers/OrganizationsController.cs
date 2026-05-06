@@ -2,6 +2,7 @@
 using Microsoft.AspNetCore.Mvc;
 using POC.CustomerValidation.API.Interfaces;
 using POC.CustomerValidation.API.Models.DTOs;
+using POC.CustomerValidation.API.Services.Provisioning;
 
 namespace POC.CustomerValidation.API.Controllers;
 
@@ -9,9 +10,13 @@ namespace POC.CustomerValidation.API.Controllers;
 
 [Route("api/[controller]")]
 [ApiController]
-public class OrganizationsController(IOrganizationServices services, ILogger<OrganizationsController> log) : ControllerBase
+public class OrganizationsController(
+    IOrganizationServices services,
+    IOrganizationProvisioningService provisioning,
+    ILogger<OrganizationsController> log) : ControllerBase
 {
     private readonly IOrganizationServices _services = services;
+    private readonly IOrganizationProvisioningService _provisioning = provisioning;
     private readonly ILogger<OrganizationsController> _log = log;
 
 
@@ -106,5 +111,26 @@ public class OrganizationsController(IOrganizationServices services, ILogger<Org
         return NoContent();
     }
 
+    [HttpPost("{organizationId:guid}/reprovision")]
+    [EndpointSummary("Force re-provision isolated database")]
+    [ProducesResponseType(StatusCodes.Status202Accepted)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> Reprovision(Guid organizationId)
+    {
+        _log.LogInformation("Reprovision requested for organization {OrgId}", organizationId);
+        await _services.ReprovisionAsync(organizationId);
+        return Accepted();
+    }
+
+    [HttpPost("migrate-isolated")]
+    [EndpointSummary("Apply pending migrations to all isolated databases")]
+    [ProducesResponseType(typeof(IEnumerable<DatabaseMigrationResult>), StatusCodes.Status200OK)]
+    public async Task<IActionResult> MigrateIsolated(CancellationToken ct)
+    {
+        _log.LogInformation("Migrate-all-isolated requested");
+        var results = await _provisioning.MigrateAllIsolatedAsync(ct);
+        return Ok(results);
+    }
 
 }

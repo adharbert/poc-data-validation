@@ -52,6 +52,15 @@ const DEFAULT_SPLIT_FULL_NAME_OUTPUTS = [
   { outputToken: 'Credentials', destinationTable: 'skip',     destinationField: null,         sortOrder: 4 },
 ]
 
+const DEFAULT_SPLIT_FULL_ADDRESS_OUTPUTS = [
+  { outputToken: 'AddressLine1', destinationTable: 'customer_address', destinationField: 'AddressLine1', sortOrder: 0 },
+  { outputToken: 'AddressLine2', destinationTable: 'customer_address', destinationField: 'AddressLine2', sortOrder: 1 },
+  { outputToken: 'City',         destinationTable: 'customer_address', destinationField: 'City',         sortOrder: 2 },
+  { outputToken: 'State',        destinationTable: 'customer_address', destinationField: 'State',        sortOrder: 3 },
+  { outputToken: 'PostalCode',   destinationTable: 'customer_address', destinationField: 'PostalCode',   sortOrder: 4 },
+  { outputToken: 'Country',      destinationTable: 'customer_address', destinationField: 'Country',      sortOrder: 5 },
+]
+
 function fieldsForTable(table) {
   if (table === 'customer')         return CUSTOMER_FIELDS
   if (table === 'customer_address') return ADDRESS_FIELDS
@@ -158,7 +167,56 @@ function StepUpload({ orgId, onUploaded }) {
 // ---------------------------------------------------------------------------
 // Step 2 — Map Columns
 // ---------------------------------------------------------------------------
-function MappingRow({ m, index, fieldDefs, onChange }) {
+
+// A compact secondary destination row shown below the primary mapping
+function ExtraMappingRow({ extra, fieldDefs, onChange, onRemove }) {
+  const fields = fieldsForTable(extra.destinationTable)
+
+  return (
+    <div className="d-flex align-items-center gap-2 ms-4 mt-1 flex-wrap">
+      <span className="text-muted" style={{ fontSize: '.75rem', minWidth: 60 }}>also →</span>
+
+      <select
+        className="form-select form-select-sm"
+        style={{ width: 'auto', minWidth: 140 }}
+        value={extra.destinationTable}
+        onChange={e => onChange({ destinationTable: e.target.value, destinationField: null, fieldDefinitionId: null })}
+      >
+        {DEST_TABLES.filter(t => t.value !== 'skip').map(t => (
+          <option key={t.value} value={t.value}>{t.label}</option>
+        ))}
+      </select>
+
+      {(extra.destinationTable === 'customer' || extra.destinationTable === 'customer_address') && (
+        <select
+          className="form-select form-select-sm"
+          style={{ width: 'auto', minWidth: 150 }}
+          value={extra.destinationField ?? ''}
+          onChange={e => onChange({ destinationField: e.target.value || null })}
+        >
+          <option value="">— Select field —</option>
+          {fields.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
+        </select>
+      )}
+
+      {extra.destinationTable === 'field_value' && (
+        <select
+          className="form-select form-select-sm"
+          style={{ width: 'auto', minWidth: 180 }}
+          value={extra.fieldDefinitionId ?? ''}
+          onChange={e => onChange({ fieldDefinitionId: e.target.value || null })}
+        >
+          <option value="">— Select field —</option>
+          {fieldDefs.map(fd => <option key={fd.fieldDefinitionId} value={fd.fieldDefinitionId}>{fd.fieldLabel}</option>)}
+        </select>
+      )}
+
+      <button type="button" className="btn btn-sm btn-outline-danger ms-1" style={{ padding: '1px 6px', fontSize: '.75rem' }} onClick={onRemove}>✕</button>
+    </div>
+  )
+}
+
+function MappingRow({ m, index, fieldDefs, onChange, onAddExtra, onChangeExtra, onRemoveExtra }) {
   const [showOutputs, setShowOutputs] = useState(false)
 
   function handleTableChange(table) {
@@ -171,7 +229,10 @@ function MappingRow({ m, index, fieldDefs, onChange }) {
   }
 
   function handleTransformChange(transform) {
-    const outputs = transform === 'split_full_name' ? DEFAULT_SPLIT_FULL_NAME_OUTPUTS : []
+    const outputs =
+      transform === 'split_full_name'    ? DEFAULT_SPLIT_FULL_NAME_OUTPUTS    :
+      transform === 'split_full_address' ? DEFAULT_SPLIT_FULL_ADDRESS_OUTPUTS :
+      []
     onChange(index, { transformType: transform, destinationField: null, outputs })
   }
 
@@ -186,8 +247,9 @@ function MappingRow({ m, index, fieldDefs, onChange }) {
     onChange(index, { outputs })
   }
 
-  const isSplit  = m.transformType === 'split_full_name'
-  const fields   = fieldsForTable(m.destinationTable)
+  const isSplit      = m.transformType === 'split_full_name' || m.transformType === 'split_full_address'
+  const isNameSplit  = m.transformType === 'split_full_name'
+  const fields       = fieldsForTable(m.destinationTable)
 
   return (
     <div className="border-bottom py-2">
@@ -212,7 +274,7 @@ function MappingRow({ m, index, fieldDefs, onChange }) {
           {DEST_TABLES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
         </select>
 
-        {/* Destination field — hidden for field_value (uses FieldDefinition picker) and skip */}
+        {/* Destination field — hidden for field_value and skip */}
         {m.destinationTable === 'customer' || m.destinationTable === 'customer_address' ? (
           !isSplit ? (
             <select
@@ -226,7 +288,7 @@ function MappingRow({ m, index, fieldDefs, onChange }) {
             </select>
           ) : (
             <span className="badge bg-primary bg-opacity-15 text-primary border border-primary px-2 py-1" style={{ fontSize: '.75rem' }}>
-              Split → First / Middle / Last
+              {isNameSplit ? 'Split → First / Middle / Last' : 'Split → Street / City / State / ZIP'}
             </span>
           )
         ) : null}
@@ -244,16 +306,17 @@ function MappingRow({ m, index, fieldDefs, onChange }) {
           </select>
         )}
 
-        {/* Transform toggle — only for customer table */}
-        {m.destinationTable === 'customer' && (
+        {/* Transform toggle — customer and customer_address */}
+        {(m.destinationTable === 'customer' || m.destinationTable === 'customer_address') && (
           <select
             className="form-select form-select-sm"
-            style={{ width: 'auto', minWidth: 130 }}
+            style={{ width: 'auto', minWidth: 150 }}
             value={m.transformType}
             onChange={e => handleTransformChange(e.target.value)}
           >
             <option value="direct">Direct (1:1)</option>
-            <option value="split_full_name">Split Full Name</option>
+            {m.destinationTable === 'customer'         && <option value="split_full_name">Split Full Name</option>}
+            {m.destinationTable === 'customer_address' && <option value="split_full_address">Split Full Address</option>}
           </select>
         )}
 
@@ -275,7 +338,7 @@ function MappingRow({ m, index, fieldDefs, onChange }) {
         <div className="ms-4 mt-2 ps-3 border-start" style={{ borderColor: '#e5e7eb' }}>
           {m.outputs.map((o, ti) => (
             <div key={o.outputToken} className="d-flex align-items-center gap-2 mb-1" style={{ fontSize: '.8rem' }}>
-              <span className="font-monospace text-muted" style={{ minWidth: 90 }}>{o.outputToken}</span>
+              <span className="font-monospace text-muted" style={{ minWidth: 100 }}>{o.outputToken}</span>
               <span className="text-muted">→</span>
               <select
                 className="form-select form-select-sm"
@@ -284,12 +347,37 @@ function MappingRow({ m, index, fieldDefs, onChange }) {
                 onChange={e => handleOutputFieldChange(ti, e.target.value)}
               >
                 <option value="">— Skip —</option>
-                {CUSTOMER_FIELDS.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
+                {(isNameSplit ? CUSTOMER_FIELDS : ADDRESS_FIELDS).map(f => (
+                  <option key={f.value} value={f.value}>{f.label}</option>
+                ))}
               </select>
             </div>
           ))}
         </div>
       )}
+
+      {/* Additional destination rows */}
+      {(m.extraMappings ?? []).map((extra, ei) => (
+        <ExtraMappingRow
+          key={ei}
+          extra={extra}
+          fieldDefs={fieldDefs}
+          onChange={patch => onChangeExtra(index, ei, patch)}
+          onRemove={() => onRemoveExtra(index, ei)}
+        />
+      ))}
+
+      {/* Add extra destination button */}
+      <div className="ms-4 mt-1">
+        <button
+          type="button"
+          className="btn btn-link p-0 text-muted"
+          style={{ fontSize: '.75rem' }}
+          onClick={() => onAddExtra(index)}
+        >
+          + Also map to…
+        </button>
+      </div>
     </div>
   )
 }
@@ -310,6 +398,7 @@ function StepMapping({ orgId, batch, autoMatches, fieldDefs, onSaved }) {
       saveForReuse:     true,
       displayOrder:     i,
       outputs:          m.outputs ?? [],
+      extraMappings:    [],
     }))
   )
 
@@ -317,9 +406,48 @@ function StepMapping({ orgId, batch, autoMatches, fieldDefs, onSaved }) {
     setMappings(prev => prev.map((m, i) => i === index ? { ...m, ...patch } : m))
   }
 
+  function handleAddExtra(index) {
+    setMappings(prev => prev.map((m, i) => i !== index ? m : {
+      ...m,
+      extraMappings: [...(m.extraMappings ?? []), { destinationTable: 'field_value', destinationField: null, fieldDefinitionId: null }],
+    }))
+  }
+
+  function handleChangeExtra(index, extraIndex, patch) {
+    setMappings(prev => prev.map((m, i) => i !== index ? m : {
+      ...m,
+      extraMappings: m.extraMappings.map((e, ei) => ei === extraIndex ? { ...e, ...patch } : e),
+    }))
+  }
+
+  function handleRemoveExtra(index, extraIndex) {
+    setMappings(prev => prev.map((m, i) => i !== index ? m : {
+      ...m,
+      extraMappings: m.extraMappings.filter((_, ei) => ei !== extraIndex),
+    }))
+  }
+
   async function handleSave() {
+    // Flatten primary + extra mappings into one list for the API
+    const flatMappings = mappings.flatMap(m => {
+      const { extraMappings, ...primary } = m
+      const extras = (extraMappings ?? []).map(e => ({
+        csvHeader:         m.csvHeader,
+        csvColumnIndex:    m.csvColumnIndex,
+        destinationTable:  e.destinationTable,
+        destinationField:  e.destinationField ?? null,
+        fieldDefinitionId: e.fieldDefinitionId ?? null,
+        transformType:     'direct',
+        isAutoMatched:     false,
+        saveForReuse:      m.saveForReuse,
+        displayOrder:      m.displayOrder,
+        outputs:           [],
+      }))
+      return [primary, ...extras]
+    })
+
     try {
-      await save.mutateAsync({ batchId: batch.batchId, data: { mappings } })
+      await save.mutateAsync({ batchId: batch.batchId, data: { mappings: flatMappings } })
       toast('Mappings saved.')
       onSaved()
     } catch (err) {
@@ -332,7 +460,7 @@ function StepMapping({ orgId, batch, autoMatches, fieldDefs, onSaved }) {
       <h2 className="h5 mb-1">Map Columns</h2>
       <p className="text-muted-sm mb-3">
         File: <strong>{batch.fileName}</strong> — {mappings.length} columns detected.
-        Auto-matched columns are pre-filled.
+        Auto-matched columns are pre-filled. Use <em>Also map to…</em> to send the same column to multiple destinations.
       </p>
 
       <div className="admin-card mb-3" style={{ padding: '0 1.25rem' }}>
@@ -348,6 +476,9 @@ function StepMapping({ orgId, batch, autoMatches, fieldDefs, onSaved }) {
             index={i}
             fieldDefs={fieldDefs}
             onChange={handleChange}
+            onAddExtra={handleAddExtra}
+            onChangeExtra={handleChangeExtra}
+            onRemoveExtra={handleRemoveExtra}
           />
         ))}
       </div>

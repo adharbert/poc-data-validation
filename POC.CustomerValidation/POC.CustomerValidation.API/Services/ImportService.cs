@@ -698,23 +698,29 @@ public class ImportService(
             var value = m.CsvColumnIndex < row.Length ? row[m.CsvColumnIndex]?.Trim() : null;
             if (string.IsNullOrWhiteSpace(value)) continue;
             hasData = true;
-            switch (m.DestinationField)
+
+            if (m.TransformType == "split_full_address")
             {
-                case "AddressLine1": addr.AddressLine1 = value; break;
-                case "AddressLine2": addr.AddressLine2 = value; break;
-                case "City":         addr.City         = value; break;
-                case "State":        addr.State        = value.Length > 2
-                                         ? StateLookup.ToCode(value) ?? value[..2].ToUpper()
-                                         : value.ToUpper(); break;
-                case "PostalCode":   addr.PostalCode   = value; break;
-                case "Country":      addr.Country      = value; break;
-                case "AddressType":  addr.AddressType  = value; break;
-                case "Latitude":
-                    if (double.TryParse(value, out var lat)) addr.Latitude = lat;
-                    break;
-                case "Longitude":
-                    if (double.TryParse(value, out var lng)) addr.Longitude = lng;
-                    break;
+                var parsed = AddressParser.Parse(value);
+                foreach (var o in m.Outputs)
+                {
+                    if (o.DestinationTable != "customer_address") continue;
+                    var tokenValue = o.OutputToken switch
+                    {
+                        "AddressLine1" => parsed.AddressLine1,
+                        "AddressLine2" => parsed.AddressLine2,
+                        "City"         => parsed.City,
+                        "State"        => parsed.State,
+                        "PostalCode"   => parsed.PostalCode,
+                        "Country"      => parsed.Country,
+                        _              => null,
+                    };
+                    ApplyAddressField(o.DestinationField, tokenValue, addr);
+                }
+            }
+            else
+            {
+                ApplyAddressField(m.DestinationField, value, addr);
             }
         }
 
@@ -722,6 +728,29 @@ public class ImportService(
         return hasData && !string.IsNullOrWhiteSpace(addr.AddressLine1) && !string.IsNullOrWhiteSpace(addr.City)
             ? addr
             : null;
+    }
+
+    private static void ApplyAddressField(string? field, string? value, CustomerAddress addr)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return;
+        switch (field)
+        {
+            case "AddressLine1": addr.AddressLine1 = value; break;
+            case "AddressLine2": addr.AddressLine2 = value; break;
+            case "City":         addr.City         = value; break;
+            case "State":        addr.State        = value.Length > 2
+                                     ? StateLookup.ToCode(value) ?? value[..2].ToUpper()
+                                     : value.ToUpper(); break;
+            case "PostalCode":   addr.PostalCode   = value; break;
+            case "Country":      addr.Country      = value; break;
+            case "AddressType":  addr.AddressType  = value; break;
+            case "Latitude":
+                if (double.TryParse(value, out var lat)) addr.Latitude = lat;
+                break;
+            case "Longitude":
+                if (double.TryParse(value, out var lng)) addr.Longitude = lng;
+                break;
+        }
     }
 
     private static List<(Guid FieldDefinitionId, string? Value)> ExtractFieldValues(
@@ -852,6 +881,132 @@ public class ImportService(
                 2 => (words[0], null,                              words[1],   suffix, creds),
                 _ => (words[0], string.Join(" ", words[1..^1]),    words[^1],  suffix, creds),
             };
+        }
+    }
+
+    private static class AddressParser
+    {
+        // Matches "IL 62701", "IL62701", "IL 62701-1234"
+        private static readonly Regex StateZipRx = new(
+            @"^([A-Za-z]{2})\s*(\d{5}(?:-\d{4})?)$",
+            RegexOptions.Compiled);
+
+        private static readonly Regex ZipRx = new(
+            @"^\d{5}(?:-\d{4})?$",
+            RegexOptions.Compiled);
+
+        private static readonly HashSet<string> StateCodes = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA",
+            "KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ",
+            "NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT",
+            "VA","WA","WV","WI","WY","DC","PR","VI","GU","AS","MP"
+        };
+
+        // Only unambiguous country tokens — "CA" (Canada) is excluded to avoid conflict with
+        // the California state abbreviation; "AU" excluded for same reason (Australia vs. no-state-code).
+        private static readonly HashSet<string> CountryTokens = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "USA","US","UNITED STATES","UNITED STATES OF AMERICA",
+            "CANADA","UK","UNITED KINGDOM","AUSTRALIA","MEXICO","MEX"
+        };
+
+        public record ParsedAddress(
+            string? AddressLine1, string? AddressLine2,
+            string? City, string? State, string? PostalCode, string? Country);
+
+        public static ParsedAddress Parse(string? raw)
+        {
+            if (string.IsNullOrWhiteSpace(raw))
+                return new ParsedAddress(null, null, null, null, null, null);
+
+            var parts = raw.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+
+            string? country = null;
+            if (parts.Length > 0 && CountryTokens.Contains(parts[^1]))
+            {
+                country = parts[^1];
+                parts   = parts[..^1];
+            }
+
+            return parts.Length switch
+            {
+                0 => new ParsedAddress(null, null, null, null, null, country),
+                1 => ParseOnePart(parts[0], country),
+                2 => ParseTwoParts(parts[0], parts[1], country),
+                3 => ParseThreeParts(parts[0], parts[1], parts[2], country),
+                _ => ParseManyParts(parts, country),
+            };
+        }
+
+        // "123 Main St Springfield IL 62701"
+        private static ParsedAddress ParseOnePart(string part, string? country)
+        {
+            var words = part.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (words.Length >= 2)
+            {
+                if (ZipRx.IsMatch(words[^1]) && StateCodes.Contains(words[^2]))
+                    return new ParsedAddress(string.Join(' ', words[..^2]), null, null,
+                        words[^2].ToUpper(), words[^1], country);
+
+                var m = StateZipRx.Match(words[^1]);
+                if (m.Success)
+                    return new ParsedAddress(string.Join(' ', words[..^1]), null, null,
+                        m.Groups[1].Value.ToUpper(), m.Groups[2].Value, country);
+            }
+            return new ParsedAddress(part, null, null, null, null, country);
+        }
+
+        // "123 Main St, Springfield IL 62701"
+        private static ParsedAddress ParseTwoParts(string addr, string cityStateZip, string? country)
+        {
+            var words = cityStateZip.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (words.Length >= 3 && ZipRx.IsMatch(words[^1]) && StateCodes.Contains(words[^2]))
+                return new ParsedAddress(addr, null,
+                    string.Join(' ', words[..^2]), words[^2].ToUpper(), words[^1], country);
+
+            if (words.Length == 2 && StateCodes.Contains(words[0]) && ZipRx.IsMatch(words[1]))
+                return new ParsedAddress(addr, null, null, words[0].ToUpper(), words[1], country);
+
+            return new ParsedAddress(addr, null, cityStateZip, null, null, country);
+        }
+
+        // "123 Main St, Springfield, IL 62701"  — most common US format
+        private static ParsedAddress ParseThreeParts(string addr, string city, string stateZip, string? country)
+        {
+            var (state, zip) = SplitStateZip(stateZip);
+            return new ParsedAddress(addr, null, city, state, zip, country);
+        }
+
+        // "123 Main St, Suite 200, Springfield, IL 62701"
+        private static ParsedAddress ParseManyParts(string[] parts, string? country)
+        {
+            var (state, zip) = SplitStateZip(parts[^1]);
+            if (state != null || zip != null)
+            {
+                return new ParsedAddress(
+                    parts[0],
+                    parts.Length > 3 ? string.Join(", ", parts[1..^2]) : null,
+                    parts[^2], state, zip, country);
+            }
+            // Fallback — assign positionally
+            return new ParsedAddress(parts[0],
+                parts.Length > 3 ? parts[1] : null,
+                parts.Length >= 3 ? parts[^2] : null,
+                parts[^1], null, country);
+        }
+
+        private static (string? State, string? Zip) SplitStateZip(string s)
+        {
+            var t = s.Trim();
+            var m = StateZipRx.Match(t);
+            if (m.Success) return (m.Groups[1].Value.ToUpper(), m.Groups[2].Value);
+            if (ZipRx.IsMatch(t)) return (null, t);
+            if (t.Length == 2 && StateCodes.Contains(t)) return (t.ToUpper(), null);
+            var words = t.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
+            if (words.Length == 2 && StateCodes.Contains(words[0]) && ZipRx.IsMatch(words[1]))
+                return (words[0].ToUpper(), words[1]);
+            return (null, null);
         }
     }
 

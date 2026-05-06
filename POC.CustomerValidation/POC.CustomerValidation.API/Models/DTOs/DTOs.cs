@@ -7,13 +7,15 @@ public record OrganizationDto(
     Guid        OrganizationId,
     string      OrganizationName,
     string      OrganizationCode,
-    string?     FilingName, 
+    string?     FilingName,
     string?     MarketingName,
     string?     Abbreviation,
     string?     Website,
     string?     Phone,
     string?     CompanyEmail,
     bool        IsActive,
+    bool        RequiresIsolatedDatabase,
+    string?     DatabaseProvisioningStatus,
     DateTime    CreatedAt,
     string      CreatedBy,
     DateTime    UpdatedAt,
@@ -27,7 +29,8 @@ public record CreateOrganizationRequest(
     string? Abbreviation,
     string? Website,
     string? Phone,
-    string? CompanyEmail
+    string? CompanyEmail,
+    bool    RequiresIsolatedDatabase = false
 );
 
 public record UpdateOrganizationRequest(
@@ -39,7 +42,8 @@ public record UpdateOrganizationRequest(
     string? Website,
     string? Phone,
     string? CompanyEmail,
-    bool?   IsActive
+    bool?   IsActive,
+    bool    RequiresIsolatedDatabase = false
 );
 
 
@@ -683,6 +687,124 @@ public record CreateCustomerEmailRequest
     public bool     IsPrimary       { get; init; }
 }
 
+
+// -------------------------------------------------------
+// Field Library DTOs
+// -------------------------------------------------------
+
+public record LibraryFieldOptionDto
+{
+    public Guid     Id              { get; init; }
+    public Guid     LibraryFieldId  { get; init; }
+    public string   OptionKey       { get; init; } = default!;
+    public string   OptionLabel     { get; init; } = default!;
+    public int      DisplayOrder    { get; init; }
+    public bool     IsActive        { get; init; }
+}
+
+public record LibraryFieldDto
+{
+    public Guid     Id              { get; init; }
+    public string   FieldKey        { get; init; } = default!;
+    public string   FieldLabel      { get; init; } = default!;
+    public string   FieldType       { get; init; } = default!;
+    public string?  PlaceHolderText { get; init; }
+    public string?  HelpText        { get; init; }
+    public bool     IsRequired      { get; init; }
+    public int      DisplayOrder    { get; init; }
+    public decimal? MinValue        { get; init; }
+    public decimal? MaxValue        { get; init; }
+    public int?     MinLength       { get; init; }
+    public int?     MaxLength       { get; init; }
+    public string?  RegExPattern    { get; init; }
+    public string?  DisplayFormat   { get; init; }
+    public bool     IsActive        { get; init; }
+    public IEnumerable<LibraryFieldOptionDto> Options { get; init; } = [];
+}
+
+public record LibrarySectionDto
+{
+    public Guid     Id              { get; init; }
+    public string   SectionName     { get; init; } = default!;
+    public string?  Description     { get; init; }
+    public int      DisplayOrder    { get; init; }
+    public bool     IsActive        { get; init; }
+    public IEnumerable<LibraryFieldDto> Fields { get; init; } = [];
+}
+
+public record CreateLibrarySectionRequest
+{
+    public string   SectionName     { get; init; } = default!;
+    public string?  Description     { get; init; }
+    public int      DisplayOrder    { get; init; }
+}
+
+public record UpdateLibrarySectionRequest
+{
+    public string   SectionName     { get; init; } = default!;
+    public string?  Description     { get; init; }
+    public int      DisplayOrder    { get; init; }
+    public bool     IsActive        { get; init; }
+}
+
+public record AssignLibraryFieldsRequest
+{
+    public IEnumerable<LibraryFieldOrderItem> Fields { get; init; } = [];
+}
+
+public record LibraryFieldOrderItem
+{
+    public Guid LibraryFieldId  { get; init; }
+    public int  DisplayOrder    { get; init; }
+}
+
+public record CreateLibraryFieldRequest
+{
+    public string   FieldKey        { get; init; } = default!;
+    public string   FieldLabel      { get; init; } = default!;
+    public string   FieldType       { get; init; } = default!;
+    public string?  PlaceHolderText { get; init; }
+    public string?  HelpText        { get; init; }
+    public bool     IsRequired      { get; init; }
+    public int      DisplayOrder    { get; init; }
+    public decimal? MinValue        { get; init; }
+    public decimal? MaxValue        { get; init; }
+    public int?     MinLength       { get; init; }
+    public int?     MaxLength       { get; init; }
+    public string?  RegExPattern    { get; init; }
+    public string?  DisplayFormat   { get; init; }
+}
+
+public record UpdateLibraryFieldRequest
+{
+    public string   FieldLabel      { get; init; } = default!;
+    public string   FieldType       { get; init; } = default!;
+    public string?  PlaceHolderText { get; init; }
+    public string?  HelpText        { get; init; }
+    public bool     IsRequired      { get; init; }
+    public int      DisplayOrder    { get; init; }
+    public decimal? MinValue        { get; init; }
+    public decimal? MaxValue        { get; init; }
+    public int?     MinLength       { get; init; }
+    public int?     MaxLength       { get; init; }
+    public string?  RegExPattern    { get; init; }
+    public string?  DisplayFormat   { get; init; }
+    public bool     IsActive        { get; init; }
+}
+
+public record ImportFromLibraryRequest
+{
+    public Guid                 OrganizationId  { get; init; }
+    public IEnumerable<Guid>    SectionIds      { get; init; } = [];
+}
+
+public record ImportFromLibraryResult
+{
+    public int  SectionsCreated { get; init; }
+    public int  FieldsCreated   { get; init; }
+    public int  OptionsCreated  { get; init; }
+}
+
 public record UpdateCustomerEmailRequest
 {
     public string   EmailAddress    { get; init; } = default!;
@@ -711,3 +833,8 @@ public record MelissaValidationResult
 
 
 
+public record SetStatusRequest
+{
+    public bool IsActive { get; init; }
+    public string ModifiedBy { get; init; } = "System";
+}

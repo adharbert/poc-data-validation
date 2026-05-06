@@ -1,9 +1,10 @@
-﻿using System.Data;
+using System.Data;
 using Dapper;
 using POC.CustomerValidation.API.Interfaces;
 using POC.CustomerValidation.API.Persistence;
 using POC.CustomerValidation.API.Persistence.Repositories;
 using POC.CustomerValidation.API.Services;
+using POC.CustomerValidation.API.Services.Provisioning;
 
 namespace POC.CustomerValidation.API.Startup;
 
@@ -14,10 +15,13 @@ public static class DependencyInjectionSetup
         // Dapper type handlers — register once at startup ----------------------
         SqlMapper.AddTypeHandler(new DateOnlyTypeHandler());
 
-        // Database Dapper configuration ----------------------------------------
-        services.AddSingleton<IDbConnectionFactory>(
-            new SqlConnectionFactory(configuration.GetConnectionString("DefaultConnection")!)
-        );
+        // Tenant connection routing ---------------------------------------------
+        // TenantContext is Scoped — one resolved connection per HTTP request.
+        // TenantAwareConnectionFactory wraps it so all repositories route correctly.
+        // TenantConnectionCache is Singleton — caches org→connection lookups.
+        services.AddScoped<ITenantContext, TenantContext>();
+        services.AddScoped<IDbConnectionFactory, TenantAwareConnectionFactory>();
+        services.AddSingleton<ITenantConnectionCache, TenantConnectionCache>();
 
         // Repositories DI  -----------------------------------------------------
         services.AddScoped<IOrganizationRepository,             OrganizationRepository>();
@@ -35,6 +39,7 @@ public static class DependencyInjectionSetup
         services.AddScoped<ICustomerAddressRepository,          CustomerAddressRepository>();
         services.AddScoped<ICustomerPhoneRepository,            CustomerPhoneRepository>();
         services.AddScoped<ICustomerEmailRepository,            CustomerEmailRepository>();
+        services.AddScoped<ILibraryRepository,                  LibraryRepository>();
 
         // Services DI  ---------------------------------------------------------
         services.AddScoped<IOrganizationServices,               OrganizationServices>();
@@ -50,6 +55,15 @@ public static class DependencyInjectionSetup
         services.AddScoped<IDashboardService,                   DashboardService>();
         services.AddScoped<ICustomerAddressService,             CustomerAddressService>();
         services.AddScoped<IMelissaService,                     MelissaService>();
+        services.AddScoped<ILibraryService,                     LibraryService>();
+
+        // Provisioning ---------------------------------------------------------
+        // Queue is Singleton — lives for the app lifetime.
+        // Provisioner is Scoped — needs IOrganizationRepository.
+        // BackgroundService drains the queue by creating scopes per job.
+        services.AddSingleton<IProvisioningQueue,               ProvisioningQueue>();
+        services.AddScoped<IOrganizationProvisioningService,    OrganizationProvisioningService>();
+        services.AddHostedService<DatabaseProvisioningBackgroundService>();
 
         return services;
     }

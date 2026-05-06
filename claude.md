@@ -75,7 +75,3 @@ cd ClientAdmin/datavalidation-portal && npm run dev
 - Wrap all inserts/updates in `BEGIN TRANSACTION` / `BEGIN TRY` / `BEGIN CATCH`
 - Guard against duplicate runs before inserting
 
-### Known gotcha — do not fix
-
-`FieldDefinitions.DsiplayOrder` — column name has a typo in the DB (`DsiplayOrder`, not `DisplayOrder`).
-**Never rename it.** Always reference it as `DsiplayOrder` in all SQL and entity/DTO mappings.

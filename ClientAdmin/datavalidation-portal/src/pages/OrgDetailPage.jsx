@@ -9,6 +9,26 @@ import { fmtDate, fmtPhone } from '@/utils/dates.js'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
+function provisioningAlertVariant(status) {
+  switch (status) {
+    case 'ready':        return 'success'
+    case 'provisioning': return 'primary'
+    case 'pending':      return 'warning'
+    case 'failed':       return 'danger'
+    default:             return 'secondary'
+  }
+}
+
+function provisioningStatusLabel(status) {
+  switch (status) {
+    case 'ready':        return 'Dedicated database provisioned and ready.'
+    case 'provisioning': return 'Dedicated database is being provisioned…'
+    case 'pending':      return 'Dedicated database provisioning is queued.'
+    case 'failed':       return 'Dedicated database provisioning failed. Contact your administrator.'
+    default:             return status ?? 'Unknown'
+  }
+}
+
 function fmt(dateStr) {
   return fmtDate(dateStr)
 }
@@ -218,6 +238,13 @@ export default function OrgDetailPage() {
           </Link>
         }
       />
+
+      {org.requiresIsolatedDatabase && (
+        <div className={`alert alert-${provisioningAlertVariant(org.databaseProvisioningStatus)} py-2 px-3 mb-4 d-flex align-items-center gap-2`} role="alert">
+          <span>🗄️</span>
+          <span><strong>Isolated Database:</strong> {provisioningStatusLabel(org.databaseProvisioningStatus)}</span>
+        </div>
+      )}
 
       {/* Stat cards */}
       <div className="row g-3 mb-4">

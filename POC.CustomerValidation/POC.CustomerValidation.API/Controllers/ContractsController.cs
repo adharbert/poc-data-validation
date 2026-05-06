@@ -77,8 +77,4 @@ public class ContractsController(IContractService service, ILogger<ContractsCont
     }
 }
 
-public record SetStatusRequest
-{
-    public bool     IsActive    { get; init; }
-    public string   ModifiedBy  { get; init; } = "System";
-}
+

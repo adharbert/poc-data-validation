@@ -40,6 +40,12 @@ public interface IOrganizationServices
     /// <param name="isActive">Boolean</param>
     Task ChangeStatus(Guid organizationId, bool isActive);
 
+    /// <summary>
+    /// Forces re-provisioning of the isolated database regardless of current status.
+    /// Safe to call on already-provisioned orgs — EnsureDatabase, DbUp, and seed are all idempotent.
+    /// </summary>
+    Task ReprovisionAsync(Guid organizationId);
+
 }
 
 public interface IFieldDefinitionService
@@ -258,6 +264,27 @@ public interface IDashboardService
 
     /// <summary>Returns active projects approaching their end date.</summary>
     Task<IEnumerable<ExpiringProjectDto>> GetExpiringProjectsAsync(int warningDays);
+}
+
+
+public interface ILibraryService
+{
+    Task<IEnumerable<LibrarySectionDto>> GetAllSectionsAsync(bool includeInactive = false);
+    Task<LibrarySectionDto?> GetSectionByIdAsync(Guid sectionId);
+    Task<LibrarySectionDto> CreateSectionAsync(CreateLibrarySectionRequest request);
+    Task<LibrarySectionDto> UpdateSectionAsync(Guid sectionId, UpdateLibrarySectionRequest request);
+    Task SetSectionStatusAsync(Guid sectionId, bool isActive);
+    Task AssignFieldsToSectionAsync(Guid sectionId, AssignLibraryFieldsRequest request);
+
+    Task<IEnumerable<LibraryFieldDto>> GetAllFieldsAsync(bool includeInactive = false);
+    Task<LibraryFieldDto?> GetFieldByIdAsync(Guid fieldId);
+    Task<LibraryFieldDto> CreateFieldAsync(CreateLibraryFieldRequest request);
+    Task<LibraryFieldDto> UpdateFieldAsync(Guid fieldId, UpdateLibraryFieldRequest request);
+    Task SetFieldStatusAsync(Guid fieldId, bool isActive);
+    Task BulkUpsertOptionsAsync(Guid fieldId, BulkUpsertFieldOptionsRequest request);
+
+    /// <summary>Copies the selected library sections (with fields and options) into an org as live FieldSections/FieldDefinitions/FieldOptions.</summary>
+    Task<ImportFromLibraryResult> ImportToOrgAsync(ImportFromLibraryRequest request);
 }
 
 

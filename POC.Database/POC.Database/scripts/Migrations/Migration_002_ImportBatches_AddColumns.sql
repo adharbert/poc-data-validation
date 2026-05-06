@@ -69,15 +69,19 @@ BEGIN TRY
 
 
     -- Add check constraint for FileType values
+    -- EXEC() is required because SQL Server validates column names in CHECK
+    -- expressions at compile time. FileType was just added above in the same
+    -- batch, so a plain ALTER TABLE ADD CONSTRAINT would fail at compile time
+    -- before the column exists. EXEC() defers parsing to runtime.
     IF NOT EXISTS (
         SELECT 1 FROM sys.check_constraints
         WHERE parent_object_id = OBJECT_ID('dbo.ImportBatches')
           AND name = 'CK_ImportBatches_FileType'
     )
     BEGIN
-        ALTER TABLE dbo.ImportBatches
-            ADD CONSTRAINT [CK_ImportBatches_FileType]
-            CHECK (FileType IS NULL OR FileType IN ('csv', 'xlsx', 'xls'));
+        EXEC('ALTER TABLE dbo.ImportBatches
+                  ADD CONSTRAINT [CK_ImportBatches_FileType]
+                  CHECK (FileType IS NULL OR FileType IN (''csv'', ''xlsx'', ''xls''))');
 
         PRINT 'CK_ImportBatches_FileType constraint added.';
     END
@@ -92,9 +96,9 @@ BEGIN TRY
           AND name = 'CK_ImportBatches_DuplicateStrategy'
     )
     BEGIN
-        ALTER TABLE dbo.ImportBatches
-            ADD CONSTRAINT [CK_ImportBatches_DuplicateStrategy]
-            CHECK (DuplicateStrategy IN ('skip', 'update', 'error'));
+        EXEC('ALTER TABLE dbo.ImportBatches
+                  ADD CONSTRAINT [CK_ImportBatches_DuplicateStrategy]
+                  CHECK (DuplicateStrategy IN (''skip'', ''update'', ''error''))');
 
         PRINT 'CK_ImportBatches_DuplicateStrategy constraint added.';
     END

@@ -132,7 +132,6 @@ App Roles (define on API registration):
 
 | Item | Notes |
 |---|---|
-| `DsiplayOrder` typo | Column name has typo in DB. **Do not fix** — data is established. Always use `DsiplayOrder` in SQL. |
 | No file size limit on import | API should reject files over a configurable max (e.g. 10 MB). |
 | No async import progress | Import executes synchronously. Large files need a background job + polling endpoint. |
 | Abbreviation not required on create | Org can be created without Abbreviation. Import will fail later — warn on org form. |

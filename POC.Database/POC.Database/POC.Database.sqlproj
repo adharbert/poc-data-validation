@@ -130,6 +130,13 @@
     <None Include="scripts\Migrations\Migration_006_CustomerAddresses_GeoFields.sql">
       <SuppressTSqlWarnings>71006</SuppressTSqlWarnings>
     </None>
+    <None Include="scripts\Migrations\Migration_008_Organizations_IsolatedDb.sql">
+      <SuppressTSqlWarnings>71006</SuppressTSqlWarnings>
+    </None>
+    <Build Include="dbo\Tables\LibraryFieldOptions.sql" />
+    <Build Include="dbo\Tables\LibraryFields.sql" />
+    <Build Include="dbo\Tables\LibrarySectionFields.sql" />
+    <Build Include="dbo\Tables\LibrarySections.sql" />
   </ItemGroup>
   <ItemGroup>
     <None Include="POC.Database.publish.xml" />

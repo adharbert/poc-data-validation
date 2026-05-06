@@ -56,6 +56,11 @@ var app = builder.Build();
 app.UseMiddleware<ExceptionHandlingMiddleware>();
 app.UseMiddleware<RequestLoggingMiddleware>();
 
+// UseRouting must run before TenantResolutionMiddleware so route values
+// (e.g. {organisationId}) are populated when the middleware reads them.
+app.UseRouting();
+app.UseMiddleware<TenantResolutionMiddleware>();
+
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {

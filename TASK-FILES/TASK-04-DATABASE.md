@@ -132,7 +132,7 @@ field per organisation. No schema changes needed to add new fields.
 | HelpText | NVARCHAR(500) | NULL |
 | IsRequired | BIT | Default 0 |
 | IsActive | BIT | Default 1 |
-| DsiplayOrder | INT | Note: column has typo in DB, keep as-is |
+| DisplayOrder | INT | Sort order within the organization |
 | MinValue | DECIMAL(18,4) | For number fields |
 | MaxValue | DECIMAL(18,4) | For number fields |
 | MinLength | INT | For text fields |

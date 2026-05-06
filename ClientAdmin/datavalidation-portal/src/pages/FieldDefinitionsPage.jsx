@@ -168,7 +168,7 @@ function FieldOptionsModal({ fieldId, fieldLabel, onClose }) {
   const opts = items ?? (options ?? [])
 
   function addItem() {
-    setItems([...opts, { optionValue: '', optionLabel: '', displayOrder: opts.length + 1, isActive: true }])
+    setItems([...opts, { optionKey: '', optionLabel: '', displayOrder: opts.length + 1, isActive: true }])
   }
 
   function updateItem(i, key, val) {
@@ -202,8 +202,8 @@ function FieldOptionsModal({ fieldId, fieldLabel, onClose }) {
               <>
                 {opts.map((opt, i) => (
                   <div key={i} className="d-flex gap-2 mb-2 align-items-center">
-                    <input className="form-control form-control-sm" placeholder="Value" value={opt.optionValue}
-                      onChange={e => updateItem(i, 'optionValue', e.target.value)} />
+                    <input className="form-control form-control-sm" placeholder="Value" value={opt.optionKey || ''}
+                      onChange={e => updateItem(i, 'optionKey', e.target.value)} />
                     <input className="form-control form-control-sm" placeholder="Label" value={opt.optionLabel || ''}
                       onChange={e => updateItem(i, 'optionLabel', e.target.value)} />
                     <button type="button" className="btn btn-sm btn-outline-danger" onClick={() => removeItem(i)}>✕</button>

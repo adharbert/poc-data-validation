@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { orgApi, fieldApi, fieldOptionApi, customerApi, contractApi, projectApi, dashboardApi, importApi, stagingApi, sectionApi } from '@/api/services.js'
+import { orgApi, fieldApi, fieldOptionApi, customerApi, contractApi, projectApi, dashboardApi, importApi, stagingApi, sectionApi, libraryApi } from '@/api/services.js'
 
 // ---------------------------------------------------------------------------
 // Query key registry — always use these, never raw string arrays
@@ -21,6 +21,8 @@ export const QK = {
   sections:          (orgId)                       => ['sections', orgId],
   section:           (orgId, sectionId)            => ['sections', orgId, sectionId],
   formPreview:       (orgId, customerId)           => ['formPreview', orgId, customerId],
+  librarySections:   (inactive = false)            => ['library', 'sections', inactive],
+  libraryFields:     (inactive = false)            => ['library', 'fields', inactive],
 }
 
 // ---------------------------------------------------------------------------
@@ -55,6 +57,17 @@ export const useSetOrganizationStatus = () => {
     onSuccess:  () => qc.invalidateQueries({ queryKey: ['organizations'] }),
   })
 }
+
+export const useReprovisionOrganization = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id) => orgApi.reprovision(id),
+    onSuccess:  () => qc.invalidateQueries({ queryKey: ['organizations'] }),
+  })
+}
+
+export const useMigrateIsolatedDatabases = () =>
+  useMutation({ mutationFn: () => orgApi.migrateIsolated() })
 
 // ---------------------------------------------------------------------------
 // Fields
@@ -326,5 +339,89 @@ export const useDeleteStaging = (orgId) => {
   return useMutation({
     mutationFn: (stagingId) => stagingApi.delete(orgId, stagingId),
     onSuccess:  () => qc.invalidateQueries({ queryKey: ['staging', orgId] }),
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Field Library
+// ---------------------------------------------------------------------------
+export const useLibrarySections = (includeInactive = false) =>
+  useQuery({ queryKey: QK.librarySections(includeInactive), queryFn: () => libraryApi.getSections(includeInactive) })
+
+export const useCreateLibrarySection = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data) => libraryApi.createSection(data),
+    onSuccess:  () => qc.invalidateQueries({ queryKey: ['library', 'sections'] }),
+  })
+}
+
+export const useUpdateLibrarySection = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, data }) => libraryApi.updateSection(id, data),
+    onSuccess:  () => qc.invalidateQueries({ queryKey: ['library', 'sections'] }),
+  })
+}
+
+export const useSetLibrarySectionStatus = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, isActive }) => libraryApi.setSectionStatus(id, isActive),
+    onSuccess:  () => qc.invalidateQueries({ queryKey: ['library', 'sections'] }),
+  })
+}
+
+export const useAssignLibraryFields = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ sectionId, fields }) => libraryApi.assignFields(sectionId, fields),
+    onSuccess:  () => qc.invalidateQueries({ queryKey: ['library'] }),
+  })
+}
+
+export const useLibraryFields = (includeInactive = false) =>
+  useQuery({ queryKey: QK.libraryFields(includeInactive), queryFn: () => libraryApi.getFields(includeInactive) })
+
+export const useCreateLibraryField = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data) => libraryApi.createField(data),
+    onSuccess:  () => qc.invalidateQueries({ queryKey: ['library', 'fields'] }),
+  })
+}
+
+export const useUpdateLibraryField = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, data }) => libraryApi.updateField(id, data),
+    onSuccess:  () => qc.invalidateQueries({ queryKey: ['library', 'fields'] }),
+  })
+}
+
+export const useSetLibraryFieldStatus = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, isActive }) => libraryApi.setFieldStatus(id, isActive),
+    onSuccess:  () => qc.invalidateQueries({ queryKey: ['library', 'fields'] }),
+  })
+}
+
+export const useBulkUpsertLibraryOptions = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ fieldId, options }) => libraryApi.bulkUpsertOptions(fieldId, options),
+    onSuccess:  () => qc.invalidateQueries({ queryKey: ['library'] }),
+  })
+}
+
+export const useImportFromLibrary = (orgId) => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (sectionIds) => libraryApi.importToOrg(orgId, sectionIds),
+    onSuccess:  () => {
+      qc.invalidateQueries({ queryKey: ['sections', orgId] })
+      qc.invalidateQueries({ queryKey: ['fields', orgId] })
+    },
   })
 }

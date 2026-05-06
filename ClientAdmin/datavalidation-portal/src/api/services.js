@@ -9,6 +9,8 @@ export const orgApi = {
   create:       (data)                              => api.post('/organizations', data).then(r => r.data),
   update:       (id, data)                          => api.put(`/organizations/${id}`, data).then(r => r.data),
   setStatus:    (id, status)                        => api.put(`/organizations/${id}/status/${status}`).then(r => r.data),
+  reprovision:      (id)   => api.post(`/organizations/${id}/reprovision`).then(r => r.data),
+  migrateIsolated:  ()     => api.post('/organizations/migrate-isolated').then(r => r.data),
 }
 
 // ---------------------------------------------------------------------------
@@ -27,8 +29,8 @@ export const fieldApi = {
 // Field Options
 // ---------------------------------------------------------------------------
 export const fieldOptionApi = {
-  getAll:       (fieldId)      => api.get(`/fields/${fieldId}/options`).then(r => r.data),
-  save:         (fieldId, data) => api.post(`/fields/${fieldId}/options`, data).then(r => r.data),
+  getAll:       (fieldId)       => api.get(`/fields/${fieldId}/options`).then(r => r.data),
+  save:         (fieldId, data) => api.put(`/fields/${fieldId}/options/bulk`, { options: data }).then(r => r.data),
 }
 
 // ---------------------------------------------------------------------------
@@ -101,6 +103,25 @@ export const importApi = {
   preview:         (orgId, batchId)              => api.post(`/organisations/${orgId}/imports/${batchId}/preview`).then(r => r.data),
   execute:         (orgId, batchId)              => api.post(`/organisations/${orgId}/imports/${batchId}/execute`).then(r => r.data),
   getErrors:       (orgId, batchId)              => api.get(`/organisations/${orgId}/imports/${batchId}/errors`).then(r => r.data),
+}
+
+// ---------------------------------------------------------------------------
+// Field Library
+// ---------------------------------------------------------------------------
+export const libraryApi = {
+  getSections:        (includeInactive = false)   => api.get('/library/sections', { params: { includeInactive } }).then(r => r.data),
+  createSection:      (data)                       => api.post('/library/sections', data).then(r => r.data),
+  updateSection:      (id, data)                   => api.put(`/library/sections/${id}`, data).then(r => r.data),
+  setSectionStatus:   (id, isActive)               => api.patch(`/library/sections/${id}/status`, { isActive }).then(r => r.data),
+  assignFields:       (sectionId, fields)          => api.put(`/library/sections/${sectionId}/fields`, { fields }).then(r => r.data),
+
+  getFields:          (includeInactive = false)    => api.get('/library/fields', { params: { includeInactive } }).then(r => r.data),
+  createField:        (data)                       => api.post('/library/fields', data).then(r => r.data),
+  updateField:        (id, data)                   => api.put(`/library/fields/${id}`, data).then(r => r.data),
+  setFieldStatus:     (id, isActive)               => api.patch(`/library/fields/${id}/status`, { isActive }).then(r => r.data),
+  bulkUpsertOptions:  (fieldId, data)              => api.put(`/library/fields/${fieldId}/options/bulk`, { options: data }).then(r => r.data),
+
+  importToOrg:        (organizationId, sectionIds) => api.post('/library/import-to-org', { organizationId, sectionIds }).then(r => r.data),
 }
 
 // ---------------------------------------------------------------------------

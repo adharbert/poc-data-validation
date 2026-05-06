@@ -7,6 +7,7 @@ import InputsPage          from '@/pages/InputsPage.jsx'
 import CustomersPage       from '@/pages/CustomersPage.jsx'
 import ImportPage          from '@/pages/ImportPage.jsx'
 import ImportStagingPage   from '@/pages/ImportStagingPage.jsx'
+import LibraryPage         from '@/pages/LibraryPage.jsx'
 
 export default function App() {
   return (
@@ -20,6 +21,7 @@ export default function App() {
         <Route path="organizations/:organizationId/customers"            element={<CustomersPage />} />
         <Route path="organizations/:organizationId/import"               element={<ImportPage />} />
         <Route path="organizations/:organizationId/import-staging"       element={<ImportStagingPage />} />
+        <Route path="library"                                            element={<LibraryPage />} />
       </Route>
     </Routes>
   )

@@ -52,6 +52,13 @@ public interface IOrganizationRepository
     /// <param name="organizationId">Guid</param>
     /// <returns>Boolean</returns>
     Task<bool> ExistsAsync(Guid organizationId);
+
+    Task UpdateProvisioningStatusAsync(Guid organizationId, string status, string? connectionString = null);
+
+    /// <summary>
+    /// Returns all organizations that have a fully provisioned isolated database.
+    /// </summary>
+    Task<IEnumerable<Organization>> GetAllIsolatedAsync();
 }
 
 
@@ -487,6 +494,30 @@ public interface ICustomerEmailRepository
 
     /// <summary>Activates or deactivates an email record.</summary>
     Task<bool> ChangeStatusAsync(Guid emailId, bool isActive);
+}
+
+
+public interface ILibraryRepository
+{
+    Task<IEnumerable<LibrarySection>> GetAllSectionsAsync(bool includeInactive = false);
+    Task<LibrarySection?> GetSectionByIdAsync(Guid sectionId);
+    Task<Guid> CreateSectionAsync(LibrarySection section);
+    Task<bool> UpdateSectionAsync(LibrarySection section);
+    Task<bool> SetSectionStatusAsync(Guid sectionId, bool isActive);
+
+    Task<IEnumerable<LibraryField>> GetAllFieldsAsync(bool includeInactive = false);
+    Task<LibraryField?> GetFieldByIdAsync(Guid fieldId);
+    Task<Guid> CreateFieldAsync(LibraryField field);
+    Task<bool> UpdateFieldAsync(LibraryField field);
+    Task<bool> SetFieldStatusAsync(Guid fieldId, bool isActive);
+
+    Task<IEnumerable<LibraryFieldOption>> GetOptionsByFieldIdAsync(Guid fieldId);
+    Task BulkUpsertOptionsAsync(Guid fieldId, IEnumerable<LibraryFieldOption> options);
+
+    Task AssignFieldsToSectionAsync(Guid sectionId, IEnumerable<(Guid FieldId, int DisplayOrder)> assignments);
+
+    /// <summary>Returns sections with their ordered fields and options — used for the import picker.</summary>
+    Task<IEnumerable<(LibrarySection Section, IEnumerable<(LibraryField Field, IEnumerable<LibraryFieldOption> Options)> Fields)>> GetSectionsWithFieldsAsync(IEnumerable<Guid> sectionIds);
 }
 
 

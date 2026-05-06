@@ -51,8 +51,8 @@ CREATE TABLE dbo.ImportColumnMappings (
     CONSTRAINT [FK_ImportColumnMappings_FieldDefinition]
         FOREIGN KEY ([FieldDefinitionId]) REFERENCES dbo.FieldDefinitions ([Id]),
 
-    CONSTRAINT [UQ_ImportColumnMappings_Header]
-        UNIQUE ([ImportBatchId], [CsvHeader]),
+    -- UQ_ImportColumnMappings_Header intentionally removed (Migration 010):
+    -- the same CSV column may map to multiple destinations (e.g. Email → customer + field_value).
 
     CONSTRAINT [CK_ImportColumnMappings_DestinationTable] CHECK (
         DestinationTable IN ('customer', 'customer_address', 'field_value', 'skip')

@@ -324,13 +324,6 @@ END
 
 ---
 
-## Column Name Typo (do not fix)
-
-`FieldDefinitions.DsiplayOrder` — this column has a typo in the
-database (`DsiplayOrder` not `DisplayOrder`). **Do not rename it.**
-The column name is established in production data. Always reference
-it as `DsiplayOrder` in SQL and `DsiplayOrder` in entity/DTO mapping.
-
 ---
 
 ## Unit Testing

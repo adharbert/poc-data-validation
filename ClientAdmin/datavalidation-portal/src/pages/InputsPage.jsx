@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { fmtNumber } from '@/utils/dates.js'
+import { parseOptionsCsv } from '@/utils/csv.js'
 import { useParams } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import {
@@ -18,6 +19,7 @@ import {
   useFields, useFieldOptions, useCreateField, useUpdateField,
   useSetFieldStatus, useSaveFieldOptions,
   useFormPreview, useCustomers,
+  useLibrarySections, useImportFromLibrary,
 } from '@/hooks/useApi.js'
 import {
   PageHeader, LoadingState, ErrorAlert, FieldTypeBadge,
@@ -116,13 +118,13 @@ function SortableFieldRow({ field, onEdit, onOptions, onToggleStatus }) {
 }
 
 // ─── Field modal ─────────────────────────────────────────────────────────────
-function FieldModal({ organizationId, field, sections, onClose }) {
+function FieldModal({ organizationId, field, sections, fields, onClose }) {
   const toast  = useToast()
   const create = useCreateField(organizationId)
   const update = useUpdateField(organizationId)
   const isEdit = !!field
 
-  const { register, handleSubmit, watch, formState: { errors } } = useForm({
+  const { register, handleSubmit, watch, setValue, formState: { errors } } = useForm({
     defaultValues: {
       organizationId,
       sectionId:      field?.sectionId      ?? '',
@@ -141,7 +143,19 @@ function FieldModal({ organizationId, field, sections, onClose }) {
   })
 
   const fieldType = watch('fieldType')
+  const sectionId = watch('sectionId')
   const saving    = create.isPending || update.isPending
+
+  useEffect(() => {
+    if (isEdit) return
+    const sectionFields = (fields ?? []).filter(f =>
+      sectionId ? f.sectionId === sectionId : !f.sectionId
+    )
+    const nextOrder = sectionFields.length
+      ? Math.max(...sectionFields.map(f => f.displayOrder ?? 0)) + 1
+      : 1
+    setValue('displayOrder', nextOrder)
+  }, [sectionId])
 
   async function onSubmit(values) {
     const payload = {
@@ -276,11 +290,12 @@ function FieldOptionsModal({ fieldId, fieldLabel, onClose }) {
   const toast    = useToast()
   const { data: options, isLoading } = useFieldOptions(fieldId)
   const save     = useSaveFieldOptions(fieldId)
+  const fileRef  = useRef()
   const [items, setItems] = useState(null)
   const opts = items ?? (options ?? [])
 
   function addItem() {
-    setItems([...opts, { optionValue: '', optionLabel: '', displayOrder: opts.length + 1, isActive: true }])
+    setItems([...opts, { optionKey: '', optionLabel: '', displayOrder: opts.length + 1, isActive: true }])
   }
   function updateItem(i, key, val) {
     setItems(opts.map((o, idx) => idx === i ? { ...o, [key]: val } : o))
@@ -288,6 +303,20 @@ function FieldOptionsModal({ fieldId, fieldLabel, onClose }) {
   function removeItem(i) {
     setItems(opts.filter((_, idx) => idx !== i))
   }
+
+  function handleFileUpload(e) {
+    const file = e.target.files[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = evt => {
+      const parsed = parseOptionsCsv(evt.target.result)
+      setItems(parsed.map(r => ({ ...r, isActive: true })))
+      toast(`Loaded ${parsed.length} options from file.`)
+    }
+    reader.readAsText(file)
+    e.target.value = ''
+  }
+
   async function handleSave() {
     try {
       await save.mutateAsync(opts)
@@ -309,23 +338,34 @@ function FieldOptionsModal({ fieldId, fieldLabel, onClose }) {
           <div className="modal-body">
             {isLoading ? <LoadingState /> : (
               <>
-                {opts.map((opt, i) => (
-                  <div key={i} className="d-flex gap-2 mb-2 align-items-center">
-                    <input className="form-control form-control-sm" placeholder="Value" value={opt.optionValue}
-                      onChange={e => updateItem(i, 'optionValue', e.target.value)} />
-                    <input className="form-control form-control-sm" placeholder="Label" value={opt.optionLabel || ''}
-                      onChange={e => updateItem(i, 'optionLabel', e.target.value)} />
-                    <button type="button" className="btn btn-sm btn-outline-danger" onClick={() => removeItem(i)}>✕</button>
-                  </div>
-                ))}
-                <button type="button" className="btn btn-sm btn-outline-secondary mt-1" onClick={addItem}>+ Add Option</button>
+                <div style={{ maxHeight: 320, overflowY: 'auto' }}>
+                  {opts.map((opt, i) => (
+                    <div key={i} className="d-flex gap-2 mb-2 align-items-center">
+                      <input className="form-control form-control-sm" placeholder="Key" value={opt.optionKey || ''}
+                        onChange={e => updateItem(i, 'optionKey', e.target.value)} />
+                      <input className="form-control form-control-sm" placeholder="Label" value={opt.optionLabel || ''}
+                        onChange={e => updateItem(i, 'optionLabel', e.target.value)} />
+                      <button type="button" className="btn btn-sm btn-outline-danger" onClick={() => removeItem(i)}>✕</button>
+                    </div>
+                  ))}
+                </div>
+                <div className="d-flex gap-2 mt-2 align-items-center">
+                  <button type="button" className="btn btn-sm btn-outline-secondary" onClick={addItem}>+ Add Option</button>
+                  <button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => fileRef.current?.click()}>
+                    Upload CSV
+                  </button>
+                  <input ref={fileRef} type="file" className="d-none" accept=".csv,.txt,.tsv" onChange={handleFileUpload} />
+                  <span className="text-muted ms-1" style={{ fontSize: '.75rem' }}>
+                    CSV: key, label (replaces list)
+                  </span>
+                </div>
               </>
             )}
           </div>
           <div className="modal-footer">
             <button className="btn btn-outline-secondary" onClick={onClose}>Cancel</button>
             <button className="btn btn-primary" onClick={handleSave} disabled={save.isPending}>
-              {save.isPending ? 'Saving…' : 'Save Options'}
+              {save.isPending ? 'Saving…' : `Save Options (${opts.length})`}
             </button>
           </div>
         </div>
@@ -554,18 +594,107 @@ function PreviewPanel({ organizationId }) {
   )
 }
 
+// ─── Import from library modal ───────────────────────────────────────────────
+function ImportFromLibraryModal({ organizationId, onClose }) {
+  const toast = useToast()
+  const { data: libSections = [], isLoading } = useLibrarySections(false)
+  const importMutation = useImportFromLibrary(organizationId)
+  const [selectedIds, setSelectedIds] = useState([])
+
+  function toggle(id) {
+    setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
+  }
+
+  async function handleImport() {
+    if (selectedIds.length === 0) return
+    try {
+      const result = await importMutation.mutateAsync(selectedIds)
+      toast(`Imported ${result.sectionsCreated} section(s) and ${result.fieldsCreated} field(s).`)
+      onClose()
+    } catch (err) {
+      toast(err.message ?? 'Import failed.', 'danger')
+    }
+  }
+
+  return (
+    <div className="modal show d-block" tabIndex="-1" style={{ background: 'rgba(0,0,0,.45)' }}>
+      <div className="modal-dialog modal-lg modal-dialog-centered">
+        <div className="modal-content">
+          <div className="modal-header">
+            <h5 className="modal-title">Import from Field Library</h5>
+            <button type="button" className="btn-close" onClick={onClose} />
+          </div>
+          <div className="modal-body">
+            {isLoading ? <LoadingState /> : libSections.length === 0 ? (
+              <p className="text-muted">No library sections available.</p>
+            ) : (
+              <>
+                <p className="text-muted mb-3" style={{ fontSize: '.875rem' }}>
+                  Select sections to copy into this organisation. Fields and options will be duplicated — changes to the library will not affect what was already imported.
+                </p>
+                <div className="section-field-pick-list">
+                  {libSections.map(s => (
+                    <label key={s.id} className="section-field-pick-item" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 4 }}>
+                      <div className="d-flex align-items-center w-100 gap-2">
+                        <input
+                          type="checkbox"
+                          className="form-check-input"
+                          checked={selectedIds.includes(s.id)}
+                          onChange={() => toggle(s.id)}
+                        />
+                        <span className="fw-semibold">{s.sectionName}</span>
+                        <span className="badge bg-secondary-subtle text-secondary-emphasis ms-auto" style={{ fontSize: '.7rem' }}>
+                          {s.fields?.length ?? 0} field{(s.fields?.length ?? 0) !== 1 ? 's' : ''}
+                        </span>
+                      </div>
+                      {s.description && (
+                        <div className="text-muted ms-4" style={{ fontSize: '.8rem' }}>{s.description}</div>
+                      )}
+                      {s.fields?.length > 0 && (
+                        <div className="ms-4 d-flex flex-wrap gap-1 mt-1">
+                          {s.fields.map(f => (
+                            <span key={f.id} className="badge bg-light text-dark border" style={{ fontSize: '.7rem', fontWeight: 400 }}>
+                              {f.fieldLabel}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </label>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+          <div className="modal-footer">
+            <button type="button" className="btn btn-outline-secondary" onClick={onClose}>Cancel</button>
+            <button
+              type="button"
+              className="btn btn-primary"
+              disabled={selectedIds.length === 0 || importMutation.isPending}
+              onClick={handleImport}
+            >
+              {importMutation.isPending ? 'Importing…' : `Import ${selectedIds.length > 0 ? `(${selectedIds.length})` : ''}`}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── Main page ────────────────────────────────────────────────────────────────
 export default function InputsPage() {
   const { organizationId } = useParams()
   const toast = useToast()
 
-  const [showInactive,   setShowInactive]   = useState(false)
-  const [showFieldModal, setShowFieldModal] = useState(false)
-  const [editField,      setEditField]      = useState(null)
-  const [optionsField,   setOptionsField]   = useState(null)
-  const [showSectionModal, setShowSectionModal] = useState(false)
-  const [editSection,    setEditSection]    = useState(null)
-  const [confirmTarget,  setConfirmTarget]  = useState(null) // { type, item, newStatus }
+  const [showInactive,      setShowInactive]      = useState(false)
+  const [showFieldModal,    setShowFieldModal]    = useState(false)
+  const [editField,         setEditField]         = useState(null)
+  const [optionsField,      setOptionsField]      = useState(null)
+  const [showSectionModal,  setShowSectionModal]  = useState(false)
+  const [editSection,       setEditSection]       = useState(null)
+  const [showLibraryImport, setShowLibraryImport] = useState(false)
+  const [confirmTarget,     setConfirmTarget]     = useState(null) // { type, item, newStatus }
 
   const { data: org } = useOrganization(organizationId)
   const { data: sections = [], isLoading: sectionsLoading } = useSections(organizationId)
@@ -660,6 +789,7 @@ export default function InputsPage() {
                 checked={showInactive} onChange={e => setShowInactive(e.target.checked)} />
               <label className="form-check-label text-muted-sm" htmlFor="showInactive">Show inactive</label>
             </div>
+            <button className="btn btn-outline-secondary btn-sm" onClick={() => setShowLibraryImport(true)}>Import from Library</button>
             <button className="btn btn-outline-primary btn-sm" onClick={() => setShowSectionModal(true)}>+ New Section</button>
             <button className="btn btn-primary btn-sm" onClick={() => setShowFieldModal(true)}>+ New Input</button>
           </>
@@ -746,6 +876,7 @@ export default function InputsPage() {
           organizationId={organizationId}
           field={editField}
           sections={sections}
+          fields={fields}
           onClose={() => { setShowFieldModal(false); setEditField(null) }}
         />
       )}
@@ -770,6 +901,13 @@ export default function InputsPage() {
           fieldId={optionsField.fieldDefinitionId}
           fieldLabel={optionsField.fieldLabel}
           onClose={() => setOptionsField(null)}
+        />
+      )}
+
+      {showLibraryImport && (
+        <ImportFromLibraryModal
+          organizationId={organizationId}
+          onClose={() => setShowLibraryImport(false)}
         />
       )}
 

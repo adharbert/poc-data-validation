@@ -316,8 +316,6 @@ Scripts are idempotent — safe to re-run. Each checks for existing data before 
 - `Customers` uses SQL Server **temporal tables** (full row history built-in)
 - `FieldValues` stores typed values in separate columns (`ValueText`, `ValueNumber`,
   `ValueDate`, `ValueBoolean`) — no EAV string casting
-- `FieldDefinitions.DsiplayOrder` — **the column name has a typo** (`DsiplayOrder`).
-  This is established in the database. **Never rename it.** Always reference as `DsiplayOrder`.
 
 ### Table relationships
 
@@ -401,10 +399,6 @@ public class MyService(IMyRepository repo, ILogger<MyService> log) { }
 ```
 Never use the old constructor-injection style.
 
-### `DsiplayOrder` typo — do not fix
-The `FieldDefinitions` table has a column named `DsiplayOrder` (not `DisplayOrder`).
-The typo is established in the production database. Always reference it as `DsiplayOrder`
-in all SQL and entity/DTO mappings.
 
 ### Phone field type
 `FieldDefinitions.FieldType` supports `'phone'` as a valid value. The import pipeline

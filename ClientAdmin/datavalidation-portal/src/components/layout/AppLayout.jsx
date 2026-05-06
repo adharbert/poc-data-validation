@@ -4,6 +4,7 @@ import { Outlet, NavLink, useParams, useLocation } from 'react-router-dom'
 const NAV_ITEMS = [
   { to: '/dashboard',      icon: '📊', label: 'Dashboard' },
   { to: '/organizations',  icon: '🏢', label: 'Organizations' },
+  { to: '/library',        icon: '📚', label: 'Field Library' },
 ]
 
 function OrgSubNav({ orgId }) {
@@ -43,6 +44,7 @@ function usePageTitle() {
   if (/\/organizations\/[^/]+$/.test(pathname)) return 'Organization Overview'
   if (pathname.startsWith('/organizations')) return 'Organizations'
   if (pathname.startsWith('/dashboard'))     return 'Dashboard'
+  if (pathname.startsWith('/library'))       return 'Field Library'
   return 'Admin Portal'
 }
 
