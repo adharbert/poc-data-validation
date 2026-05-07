@@ -82,14 +82,42 @@ Phased build plan. Completed phases are marked ✓.
 
 ---
 
-## Phase 3 — Customer Validation Portal 🔲 NOT STARTED
+## Phase 3 — Segmentations 🔲 IN PROGRESS
+
+**Goal:** Allow admins to group customers into named segments within a marketing project.
+Segments can be created by splitting an existing imported field or by uploading a separate
+segmentation file keyed on customer `OriginalId`.
+
+### 3a — Database ✓ (tables created)
+- `Segmentations` — project-scoped segment definitions
+- `CustomerSegmentations` — many-to-many junction (customer ↔ segment)
+- `MarketingProjects.ProjectType` — required column; 9 allowed values
+
+### 3b — API 🔲
+- `GET/POST/PUT/PATCH /api/organisations/{orgId}/projects/{projectId}/segmentations`
+- `POST .../segmentations/from-field` — field-split with `dryRun` preview
+- `POST .../segmentations/import` — separate segmentation file via `OriginalId` matching
+- `GET /api/organisations/{orgId}/customers/{customerId}/segmentations`
+- Update `POST /api/organisations/{orgId}/projects` to require `projectType`
+
+### 3c — Admin SPA 🔲
+- **Project create/edit modal** — required `ProjectType` dropdown
+- **Project detail page** — "Segmentations" tab
+  - List of segments with customer counts
+  - "Build from field" action: pick field → preview distinct values → confirm
+  - "Import file" action: upload CSV, map `OriginalId` + segmentation columns
+- **Customer detail page** — segmentation chips showing which segments the customer belongs to
+
+---
+
+## Phase 4 — Customer Validation Portal 🔲 NOT STARTED
 
 **Goal:** Separate React app for customers to review and confirm their field values.
 
 **Location:** `ClientPortal/customer-portal/` (Vite app not yet scaffolded)
 **Port:** 5174
 
-### 3a — API endpoints (not yet built)
+### 4a — API endpoints (not yet built)
 ```
 GET  /api/portal/customers/{identifier}
 PUT  /api/portal/values/{valueId}/confirm
@@ -98,25 +126,25 @@ POST /api/portal/sessions
 PUT  /api/portal/sessions/{sessionId}/complete
 ```
 
-### 3b — React app scaffold
+### 4b — React app scaffold
 ```bash
 cd ClientPortal
 npm create vite@latest customer-portal -- --template react
 ```
 Add Bootstrap, react-router-dom, @tanstack/react-query, react-hook-form, sass.
 
-### 3c — Pages
+### 4c — Pages
 - `CustomerLookupPage` — enter email or CustomerCode
 - `ValidationFormPage` — dynamic form, confirm/flag per field, grouped by section
 - `CompletePage` — thank-you, confirmed/flagged counts
 
 ---
 
-## Phase 4 — Authentication 🔲 NOT STARTED
+## Phase 5 — Authentication 🔲 NOT STARTED
 
 **Goal:** Lock both portals behind Azure AD. Customer portal uses magic links.
 
-**Dependency:** Complete Phases 1–3 first.
+**Dependency:** Complete Phases 1–4 first.
 
 ### 4a — API
 - Apply `[Authorize]` to all admin controllers
@@ -133,7 +161,7 @@ Add Bootstrap, react-router-dom, @tanstack/react-query, react-hook-form, sass.
 - Session table in DB
 - Customer enters email → link sent → portal exchanges token for session
 
-### 4d — Azure AD setup
+### 5d — Azure AD setup
 
 Two app registrations needed:
 1. `CustomerValidation-API` — exposes scopes + app roles (`SuperAdmin`, `OrgAdmin`, `Reviewer`)
@@ -141,7 +169,7 @@ Two app registrations needed:
 
 ---
 
-## Phase 5 — Customer Detail Page 🔲 NOT STARTED
+## Phase 6 — Customer Detail Page 🔲 NOT STARTED
 
 **Goal:** Drill into a customer from the customers list to see their field values and history.
 
@@ -165,7 +193,7 @@ Two app registrations needed:
 | No file size limit on import | Low | Reject files over 10 MB in `ImportController` |
 | No async import progress | Low | Import is sync; large files need background job + polling |
 | Abbreviation not required on create | Low | Warn on org form when navigating to import |
-| No customer detail page | Phase 5 | CustomersPage rows have no drill-down yet |
+| No customer detail page | Phase 6 | CustomersPage rows have no drill-down yet |
 
 ---
 
@@ -201,9 +229,9 @@ See `TASK-03-CODING_CONVENTIONS.md` § Unit Testing.
 ## Phase sequence summary
 
 ```
-Phases 1 + 2 ✓  →  Phase 6 ✓  →  Phase 3  →  Phase 4  →  Phase 5
-Admin + Import      Unit Tests     Customer     Auth         Customer
-complete            complete       portal       (all)        detail
+Phases 1 + 2 ✓  →  Phase 6 ✓  →  Phase 3       →  Phase 4  →  Phase 5  →  Phase 6
+Admin + Import      Unit Tests     Segmentations     Customer     Auth         Customer
+complete            complete       in progress       portal       (all)        detail
 ```
 
-Phase 5 (customer detail) is small and can be done any time since the API is already built.
+Phase 6 (customer detail) is small and can be done any time since the API is already built.

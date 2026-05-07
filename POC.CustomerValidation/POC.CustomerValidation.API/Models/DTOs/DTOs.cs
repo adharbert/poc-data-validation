@@ -833,6 +833,80 @@ public record MelissaValidationResult
 
 
 
+// -------------------------------------------------------
+// Ingestion Pipeline DTOs
+// -------------------------------------------------------
+
+public record IngestionJobDto
+{
+    public Guid         Id                  { get; init; }
+    public Guid         OrganizationId      { get; init; }
+    public string       FileName            { get; init; } = default!;
+    public string       FileType            { get; init; } = default!;
+    public long         FileSizeBytes       { get; init; }
+    public string       UploadedBy          { get; init; } = default!;
+    public DateTime     UploadedAt          { get; init; }
+    public string       Status              { get; init; } = default!;
+    public string?      Tier                { get; init; }
+    public int?         TotalRows           { get; init; }
+    public int?         PassedRows          { get; init; }
+    public int?         FlaggedRows         { get; init; }
+    public int?         FailedRows          { get; init; }
+    public string?      ErrorMessage        { get; init; }
+    public DateTime?    CompletedAt         { get; init; }
+}
+
+public record IngestionStagingRowDto
+{
+    public Guid         Id              { get; init; }
+    public Guid         IngestionJobId  { get; init; }
+    public int          RowNumber       { get; init; }
+    public string       RowJson         { get; init; } = default!;
+    public decimal?     ConfidenceScore { get; init; }
+    public string       Status          { get; init; } = default!;
+    public string?      FlagReasons     { get; init; }
+    public string?      ReviewedBy      { get; init; }
+    public DateTime?    ReviewedAt      { get; init; }
+}
+
+public record ReviewStagingRowRequest
+{
+    public string   Action      { get; init; } = default!;  // approve | reject
+    public string   ReviewedBy  { get; init; } = "System";
+    public string?  Reason      { get; init; }
+}
+
+public record CommitIngestionJobRequest
+{
+    public string CommittedBy { get; init; } = "System";
+}
+
+// -------------------------------------------------------
+
+// -------------------------------------------------------
+// Contract Documents
+// -------------------------------------------------------
+
+public record ContractDocumentDto
+{
+    public Guid     DocumentId       { get; init; }
+    public Guid     ContractId       { get; init; }
+    public Guid?    AmendmentId      { get; init; }
+    public string   OriginalFileName { get; init; } = default!;
+    public string   ContentType      { get; init; } = default!;
+    public long     FileSizeBytes    { get; init; }
+    public DateTime UploadedAt       { get; init; }
+    public string   UploadedBy       { get; init; } = default!;
+}
+
+public record UploadContractDocumentRequest
+{
+    public Guid?  AmendmentId { get; init; }
+    public string UploadedBy  { get; init; } = "System";
+}
+
+// -------------------------------------------------------
+
 public record SetStatusRequest
 {
     public bool IsActive { get; init; }

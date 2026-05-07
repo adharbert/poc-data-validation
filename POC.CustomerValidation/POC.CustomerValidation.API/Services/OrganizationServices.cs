@@ -8,10 +8,12 @@ namespace POC.CustomerValidation.API.Services;
 
 public class OrganizationServices(
     IOrganizationRepository organizationRepository,
-    IProvisioningQueue provisioningQueue) : IOrganizationServices
+    IProvisioningQueue provisioningQueue,
+    IOrganizationStorageService storageService) : IOrganizationServices
 {
     private readonly IOrganizationRepository _repo = organizationRepository;
     private readonly IProvisioningQueue _provisioningQueue = provisioningQueue;
+    private readonly IOrganizationStorageService _storageService = storageService;
 
 
     public async Task<IEnumerable<OrganizationDto>> GetAllAsync(bool includeInactive = false, string? search = null)
@@ -33,6 +35,8 @@ public class OrganizationServices(
 
         if (newOrg.RequiresIsolatedDatabase)
             EnqueueProvisioning(newOrg.OrganizationId);
+
+        await _storageService.ProvisionContainerAsync(newOrg.OrganizationId, newOrg.Abbreviation);
 
         return Map(newOrg);
     }

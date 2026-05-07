@@ -30,6 +30,10 @@ function OrgSubNav({ orgId }) {
         className={({isActive}) => `sidebar-link ${isActive ? 'active' : ''}`}>
         <span className="nav-icon">🔧</span><span className="nav-label">Staging</span>
       </NavLink>
+      <NavLink to={`/organizations/${orgId}/ingestion`}
+        className={({isActive}) => `sidebar-link ${isActive ? 'active' : ''}`}>
+        <span className="nav-icon">⚡</span><span className="nav-label">Ingestion</span>
+      </NavLink>
     </div>
   )
 }
@@ -37,6 +41,7 @@ function OrgSubNav({ orgId }) {
 function usePageTitle() {
   const location = useLocation()
   const { pathname } = location
+  if (pathname.includes('/ingestion'))        return 'Ingestion'
   if (pathname.includes('/import-staging'))  return 'Import Staging'
   if (pathname.includes('/import'))          return 'Import'
   if (pathname.includes('/customers'))       return 'Customers'

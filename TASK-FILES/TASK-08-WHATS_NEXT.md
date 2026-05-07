@@ -19,8 +19,11 @@ The following have been fully built (API + Admin SPA):
 | Field Sections | Create/edit/reorder/assign, drag-and-drop in Inputs page |
 | Form Preview | Admin selects customer → reads form with live values |
 | Customers | Paginated list, create/edit/activate/deactivate |
-| Contracts | Per-org, single active constraint enforced |
-| Marketing Projects | Per-org, multiple active allowed |
+| Contracts | Per-org, single active constraint enforced (list + create/edit UI only) |
+| Contract Amendments | API complete — no Admin SPA UI yet |
+| Contract Line Items | API complete — no Admin SPA UI yet |
+| Contract Documents | API complete (upload/download/delete) — no Admin SPA UI yet |
+| Marketing Projects | Per-org, multiple active allowed (list + create/edit UI; projectType dropdown not yet on modal) |
 | Dashboard | Global stat cards, org comparison chart, expiring projects list, org search filter |
 | Import (5-step wizard) | Upload CSV/Excel, column mapping, value mapping, preview, execute |
 | Import Staging | Resolve unmatched columns post-import |
@@ -30,12 +33,37 @@ The following have been fully built (API + Admin SPA):
 | SVG logo | PCI logo in sidebar; collapses to icon when sidebar is collapsed |
 | Unit test suite | `POC.CustomerValidation.Test` — 142 xUnit tests, all 10 controllers, ≥ 90% coverage |
 | Customer Addresses | `CustomerAddresses` table (temporal), full address history per customer, `IsCurrent` flag |
+| Azure Blob Storage provisioning | `IOrganizationStorageService` / `AzureBlobOrganizationStorageService` — container created on org create; Azurite for local dev (`UseDevelopmentStorage=true`) |
 | Melissa stub | `IMelissaService` + stub wired into address create flow — sets `MelissaValidated` when real API is connected |
 | Number display fix | `fmtNumber()` in `src/utils/dates.js` — strips trailing zeros (`42.00` → `42`, `3.14` → `3.14`) |
 
 ---
 
-## Priority 1 — Customer Detail Page (Admin SPA)
+## Priority 1 — Segmentations (Phase 3 — in progress)
+
+**Database:** ✓ `Segmentations` and `CustomerSegmentations` tables created and registered in SSDT project.
+
+**Still needed:**
+
+### API
+- Add `ProjectType` column to `MarketingProjects` table (SSDT + CHECK constraint)
+- `SegmentationsController` — CRUD under `/api/organisations/{orgId}/projects/{projectId}/segmentations`
+- `POST .../from-field` — field-split endpoint (with `dryRun` preview)
+- `POST .../import` — segmentation import file endpoint (CSV/Excel, `OriginalId` matching)
+- `GET /api/organisations/{orgId}/customers/{customerId}/segmentations` — customer's segments
+- Update `POST /api/organisations/{orgId}/projects` to require and validate `projectType`
+
+### Admin SPA
+- **Project create/edit modal** — add required `ProjectType` dropdown (9 options)
+- **Project detail page** — add "Segmentations" tab
+  - List segments with customer count per segment
+  - "Build from field" button → field picker → preview table → confirm
+  - "Import file" button → upload CSV, map columns
+- **Customer detail page** — segmentation chip list
+
+---
+
+## Priority 2 — Customer Detail Page (Admin SPA)
 
 **Route:** `/organizations/:organizationId/customers/:customerId`
 
@@ -53,7 +81,7 @@ Needs:
 
 ---
 
-## Priority 2 — Customer Validation Portal
+## Priority 3 — Customer Validation Portal
 
 Separate React app for customers to review and confirm their data.
 
@@ -100,7 +128,7 @@ Copy `src/api/client.js` fetch wrapper from admin SPA — same pattern applies.
 
 ---
 
-## Priority 3 — Authentication
+## Priority 4 — Authentication
 
 Both portals currently have no authentication.
 `Microsoft.Identity.Web` is installed in the API but `[Authorize]` is not applied.
@@ -138,6 +166,7 @@ App Roles (define on API registration):
 | No customer detail page | CustomersPage rows have no drill-down yet — API already exists (`GET /api/customers/{id}/values`). |
 | Melissa not connected | `MelissaService` is a stub — always returns `IsValid=false`. Wire up real Melissa REST API when credentials available. |
 | No address UI | Admin SPA has no address form on the customer create/edit modal yet. |
+| Azure Storage connection string blank | `appsettings.json` has `AzureStorage:ConnectionString` empty — fill in the real Azure Blob Storage connection string before deploying to production. |
 
 ---
 

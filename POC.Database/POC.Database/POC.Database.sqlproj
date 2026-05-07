@@ -137,6 +137,16 @@
     <Build Include="dbo\Tables\LibraryFields.sql" />
     <Build Include="dbo\Tables\LibrarySectionFields.sql" />
     <Build Include="dbo\Tables\LibrarySections.sql" />
+    <Build Include="dbo\Tables\IngestionJobs.sql" />
+    <Build Include="dbo\Tables\IngestionStagingRows.sql" />
+    <Build Include="dbo\Tables\Segmentations.sql" />
+    <Build Include="dbo\Tables\CustomerSegmentations.sql" />
+    <Build Include="dbo\Tables\ContractAmendments.sql" />
+    <Build Include="dbo\Tables\ContractLineItems.sql" />
+    <Build Include="dbo\Tables\ContractDocuments.sql" />
+    <None Include="scripts\Post-Deployment\05_LibraryFieldData.sql">
+      <SuppressTSqlWarnings>71006</SuppressTSqlWarnings>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <None Include="POC.Database.publish.xml" />

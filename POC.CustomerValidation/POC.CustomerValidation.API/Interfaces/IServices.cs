@@ -318,3 +318,35 @@ public interface IMelissaService
         string addressLine1, string? addressLine2,
         string city, string state, string postalCode, string country = "US");
 }
+
+public interface IContractDocumentService
+{
+    Task<IEnumerable<ContractDocumentDto>> GetByContractIdAsync(Guid contractId);
+    Task<ContractDocumentDto?> GetByIdAsync(Guid documentId);
+    /// <summary>Saves file to disk and records metadata. Returns the created DTO.</summary>
+    Task<ContractDocumentDto> UploadAsync(Guid contractId, IFormFile file, UploadContractDocumentRequest request);
+    /// <summary>Returns the file stream and its metadata for serving to the client. Throws KeyNotFoundException if not found.</summary>
+    Task<(Stream FileStream, ContractDocumentDto Metadata)> DownloadAsync(Guid documentId);
+    /// <summary>Deletes the DB record and the file on disk.</summary>
+    Task DeleteAsync(Guid documentId);
+}
+
+public interface IOrganizationStorageService
+{
+    /// <summary>
+    /// Creates a blob container for the organization.
+    /// Container name: org-{abbreviation} (lowercase, alphanumeric+hyphen) or org-{orgId prefix} as fallback.
+    /// </summary>
+    Task ProvisionContainerAsync(Guid organizationId, string? abbreviation);
+}
+
+public interface IIngestionJobService
+{
+    Task<IngestionJobDto> CreateJobAsync(Guid organizationId, IFormFile file, string uploadedBy);
+    Task<IngestionJobDto?> GetJobAsync(Guid jobId);
+    Task<PagedResult<IngestionJobDto>> GetJobsAsync(Guid organizationId, int page, int pageSize);
+    Task<PagedResult<IngestionStagingRowDto>> GetStagingRowsAsync(Guid jobId, string? statusFilter, int page, int pageSize);
+    Task ApproveRowAsync(Guid jobId, Guid rowId, string reviewedBy);
+    Task RejectRowAsync(Guid jobId, Guid rowId, string reviewedBy, string? reason);
+    Task CommitJobAsync(Guid jobId, string committedBy);
+}

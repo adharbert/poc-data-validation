@@ -1,117 +1,21 @@
 -- ============================================================
---  Migration 009 — Global Field Library
+--  Post-Deployment 05 — Global Field Library seed data
 --
---  Adds four tables for the boilerplate field library:
---    LibrarySections      — named groups (Personal Info, Address, etc.)
---    LibraryFields        — reusable field templates (no org FK)
---    LibrarySectionFields — junction: which fields belong to which section
---    LibraryFieldOptions  — dropdown/multiselect options for library fields
+--  Seeds the four standard library sections and their fields.
+--  All inserts are guarded by NOT EXISTS so this script is
+--  safe to re-run on any environment.
 --
---  Seed data included:
+--  Sections:
 --    Personal Information, Contact Information, Address, Education
 -- ============================================================
+
 SET NOCOUNT ON;
 
 BEGIN TRANSACTION;
 BEGIN TRY
 
 -- -------------------------------------------------------
--- Tables
--- -------------------------------------------------------
-
-IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE object_id = OBJECT_ID('dbo.LibrarySections'))
-BEGIN
-    CREATE TABLE [dbo].[LibrarySections] (
-        [Id]            [uniqueidentifier]   NOT NULL    DEFAULT (newsequentialid()),
-        [SectionName]   [nvarchar](200)      NOT NULL,
-        [Description]   [nvarchar](500)      NULL,
-        [DisplayOrder]  [int]                NOT NULL    DEFAULT (0),
-        [IsActive]      [bit]                NOT NULL    DEFAULT (1),
-        [CreatedDt]     [datetime]           NOT NULL    DEFAULT (GETUTCDATE()),
-        [ModifiedDt]    [datetime]           NOT NULL    DEFAULT (GETUTCDATE()),
-        CONSTRAINT [PK_LibrarySections] PRIMARY KEY CLUSTERED (Id),
-        CONSTRAINT [UQ_LibrarySections_Name] UNIQUE ([SectionName])
-    );
-    PRINT 'LibrarySections table created.';
-END
-ELSE PRINT 'LibrarySections already exists — skipped.';
-
-
-IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE object_id = OBJECT_ID('dbo.LibraryFields'))
-BEGIN
-    CREATE TABLE [dbo].[LibraryFields] (
-        [Id]                [uniqueidentifier]   NOT NULL    DEFAULT (newsequentialid()),
-        [FieldKey]          [nvarchar](100)      NOT NULL,
-        [FieldLabel]        [nvarchar](200)      NOT NULL,
-        [FieldType]         [nvarchar](20)       NOT NULL,
-        [PlaceHolderText]   [nvarchar](200)      NULL,
-        [HelpText]          [nvarchar](500)      NULL,
-        [IsRequired]        [bit]                NOT NULL    DEFAULT (0),
-        [DisplayOrder]      [int]                NOT NULL    DEFAULT (0),
-        [MinValue]          [decimal](18,4)      NULL,
-        [MaxValue]          [decimal](18,4)      NULL,
-        [MinLength]         [int]                NULL,
-        [MaxLength]         [int]                NULL,
-        [RegExPattern]      [nvarchar](500)      NULL,
-        [DisplayFormat]     [nvarchar](20)       NULL,
-        [IsActive]          [bit]                NOT NULL    DEFAULT (1),
-        [CreatedDt]         [datetime]           NOT NULL    DEFAULT (GETUTCDATE()),
-        [ModifiedDt]        [datetime]           NOT NULL    DEFAULT (GETUTCDATE()),
-        CONSTRAINT [PK_LibraryFields] PRIMARY KEY CLUSTERED (Id),
-        CONSTRAINT [UQ_LibraryFields_Key] UNIQUE ([FieldKey]),
-        CONSTRAINT [CK_LibraryFields_Type] CHECK (
-            [FieldType] IN ('text','number','date','datetime','checkbox','dropdown','multiselect','phone')
-        )
-    );
-    PRINT 'LibraryFields table created.';
-END
-ELSE PRINT 'LibraryFields already exists — skipped.';
-
-
-IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE object_id = OBJECT_ID('dbo.LibrarySectionFields'))
-BEGIN
-    CREATE TABLE [dbo].[LibrarySectionFields] (
-        [Id]                [uniqueidentifier]   NOT NULL    DEFAULT (newsequentialid()),
-        [LibrarySectionId]  [uniqueidentifier]   NOT NULL,
-        [LibraryFieldId]    [uniqueidentifier]   NOT NULL,
-        [DisplayOrder]      [int]                NOT NULL    DEFAULT (0),
-        CONSTRAINT [PK_LibrarySectionFields] PRIMARY KEY CLUSTERED (Id),
-        CONSTRAINT [UQ_LibrarySectionFields] UNIQUE ([LibrarySectionId], [LibraryFieldId]),
-        CONSTRAINT [FK_LibrarySectionFields_Section]
-            FOREIGN KEY ([LibrarySectionId]) REFERENCES [dbo].[LibrarySections] ([Id]),
-        CONSTRAINT [FK_LibrarySectionFields_Field]
-            FOREIGN KEY ([LibraryFieldId]) REFERENCES [dbo].[LibraryFields] ([Id])
-    );
-    CREATE INDEX [IX_LibrarySectionFields_Section]
-        ON [dbo].[LibrarySectionFields] ([LibrarySectionId], [DisplayOrder]);
-    PRINT 'LibrarySectionFields table created.';
-END
-ELSE PRINT 'LibrarySectionFields already exists — skipped.';
-
-
-IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE object_id = OBJECT_ID('dbo.LibraryFieldOptions'))
-BEGIN
-    CREATE TABLE [dbo].[LibraryFieldOptions] (
-        [Id]                [uniqueidentifier]   NOT NULL    DEFAULT (newsequentialid()),
-        [LibraryFieldId]    [uniqueidentifier]   NOT NULL,
-        [OptionKey]         [nvarchar](100)      NOT NULL,
-        [OptionLabel]       [nvarchar](200)      NOT NULL,
-        [DisplayOrder]      [int]                NOT NULL    DEFAULT (0),
-        [IsActive]          [bit]                NOT NULL    DEFAULT (1),
-        CONSTRAINT [PK_LibraryFieldOptions] PRIMARY KEY CLUSTERED (Id),
-        CONSTRAINT [UQ_LibraryFieldOptions_Key] UNIQUE ([LibraryFieldId], [OptionKey]),
-        CONSTRAINT [FK_LibraryFieldOptions_Field]
-            FOREIGN KEY ([LibraryFieldId]) REFERENCES [dbo].[LibraryFields] ([Id])
-    );
-    CREATE INDEX [IX_LibraryFieldOptions_Field]
-        ON [dbo].[LibraryFieldOptions] ([LibraryFieldId], [DisplayOrder]);
-    PRINT 'LibraryFieldOptions table created.';
-END
-ELSE PRINT 'LibraryFieldOptions already exists — skipped.';
-
-
--- -------------------------------------------------------
--- Seed: Sections
+-- Sections
 -- -------------------------------------------------------
 
 DECLARE @SecPersonal    uniqueidentifier = 'A1000000-0000-0000-0000-000000000001';
@@ -137,7 +41,7 @@ IF NOT EXISTS (SELECT 1 FROM dbo.LibrarySections WHERE Id = @SecEducation)
 
 
 -- -------------------------------------------------------
--- Seed: Fields
+-- Fields
 -- -------------------------------------------------------
 
 DECLARE @FldFirstName       uniqueidentifier = 'B1000000-0000-0000-0000-000000000001';
@@ -233,7 +137,7 @@ IF NOT EXISTS (SELECT 1 FROM dbo.LibraryFields WHERE Id = @FldFieldOfStudy)
 
 
 -- -------------------------------------------------------
--- Seed: Section ↔ Field assignments
+-- Section ↔ Field assignments
 -- -------------------------------------------------------
 
 -- Personal Information
@@ -282,10 +186,10 @@ IF NOT EXISTS (SELECT 1 FROM dbo.LibrarySectionFields WHERE LibrarySectionId = @
 
 
 -- -------------------------------------------------------
--- Seed: Field Options
+-- Field Options
 -- -------------------------------------------------------
 
--- Gender options
+-- Gender
 IF NOT EXISTS (SELECT 1 FROM dbo.LibraryFieldOptions WHERE LibraryFieldId = @FldGender AND OptionKey = 'male')
     INSERT INTO dbo.LibraryFieldOptions (LibraryFieldId, OptionKey, OptionLabel, DisplayOrder) VALUES (@FldGender, 'male', 'Male', 1);
 IF NOT EXISTS (SELECT 1 FROM dbo.LibraryFieldOptions WHERE LibraryFieldId = @FldGender AND OptionKey = 'female')
@@ -297,7 +201,7 @@ IF NOT EXISTS (SELECT 1 FROM dbo.LibraryFieldOptions WHERE LibraryFieldId = @Fld
 IF NOT EXISTS (SELECT 1 FROM dbo.LibraryFieldOptions WHERE LibraryFieldId = @FldGender AND OptionKey = 'other')
     INSERT INTO dbo.LibraryFieldOptions (LibraryFieldId, OptionKey, OptionLabel, DisplayOrder) VALUES (@FldGender, 'other', 'Other', 5);
 
--- State options (all 50 US states)
+-- State (50 US states + DC)
 IF NOT EXISTS (SELECT 1 FROM dbo.LibraryFieldOptions WHERE LibraryFieldId = @FldState AND OptionKey = 'AL') INSERT INTO dbo.LibraryFieldOptions (LibraryFieldId, OptionKey, OptionLabel, DisplayOrder) VALUES (@FldState, 'AL', 'Alabama', 1);
 IF NOT EXISTS (SELECT 1 FROM dbo.LibraryFieldOptions WHERE LibraryFieldId = @FldState AND OptionKey = 'AK') INSERT INTO dbo.LibraryFieldOptions (LibraryFieldId, OptionKey, OptionLabel, DisplayOrder) VALUES (@FldState, 'AK', 'Alaska', 2);
 IF NOT EXISTS (SELECT 1 FROM dbo.LibraryFieldOptions WHERE LibraryFieldId = @FldState AND OptionKey = 'AZ') INSERT INTO dbo.LibraryFieldOptions (LibraryFieldId, OptionKey, OptionLabel, DisplayOrder) VALUES (@FldState, 'AZ', 'Arizona', 3);
@@ -348,8 +252,9 @@ IF NOT EXISTS (SELECT 1 FROM dbo.LibraryFieldOptions WHERE LibraryFieldId = @Fld
 IF NOT EXISTS (SELECT 1 FROM dbo.LibraryFieldOptions WHERE LibraryFieldId = @FldState AND OptionKey = 'WV') INSERT INTO dbo.LibraryFieldOptions (LibraryFieldId, OptionKey, OptionLabel, DisplayOrder) VALUES (@FldState, 'WV', 'West Virginia', 48);
 IF NOT EXISTS (SELECT 1 FROM dbo.LibraryFieldOptions WHERE LibraryFieldId = @FldState AND OptionKey = 'WI') INSERT INTO dbo.LibraryFieldOptions (LibraryFieldId, OptionKey, OptionLabel, DisplayOrder) VALUES (@FldState, 'WI', 'Wisconsin', 49);
 IF NOT EXISTS (SELECT 1 FROM dbo.LibraryFieldOptions WHERE LibraryFieldId = @FldState AND OptionKey = 'WY') INSERT INTO dbo.LibraryFieldOptions (LibraryFieldId, OptionKey, OptionLabel, DisplayOrder) VALUES (@FldState, 'WY', 'Wyoming', 50);
+IF NOT EXISTS (SELECT 1 FROM dbo.LibraryFieldOptions WHERE LibraryFieldId = @FldState AND OptionKey = 'DC') INSERT INTO dbo.LibraryFieldOptions (LibraryFieldId, OptionKey, OptionLabel, DisplayOrder) VALUES (@FldState, 'DC', 'District of Columbia', 51);
 
--- Degree options
+-- Highest Degree
 IF NOT EXISTS (SELECT 1 FROM dbo.LibraryFieldOptions WHERE LibraryFieldId = @FldDegree AND OptionKey = 'hs_ged')
     INSERT INTO dbo.LibraryFieldOptions (LibraryFieldId, OptionKey, OptionLabel, DisplayOrder) VALUES (@FldDegree, 'hs_ged', 'High School Diploma / GED', 1);
 IF NOT EXISTS (SELECT 1 FROM dbo.LibraryFieldOptions WHERE LibraryFieldId = @FldDegree AND OptionKey = 'associate')
@@ -367,13 +272,12 @@ IF NOT EXISTS (SELECT 1 FROM dbo.LibraryFieldOptions WHERE LibraryFieldId = @Fld
 IF NOT EXISTS (SELECT 1 FROM dbo.LibraryFieldOptions WHERE LibraryFieldId = @FldDegree AND OptionKey = 'other')
     INSERT INTO dbo.LibraryFieldOptions (LibraryFieldId, OptionKey, OptionLabel, DisplayOrder) VALUES (@FldDegree, 'other', 'Other', 8);
 
-
-    COMMIT TRANSACTION;
-    PRINT 'Migration 009 completed successfully.';
+COMMIT TRANSACTION;
+PRINT '05_LibraryFieldData: seed complete.';
 
 END TRY
 BEGIN CATCH
     ROLLBACK TRANSACTION;
-    PRINT 'Migration 009 FAILED — transaction rolled back.';
     THROW;
-END CATCH;
+END CATCH
+GO

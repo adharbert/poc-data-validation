@@ -40,6 +40,8 @@ public static class DependencyInjectionSetup
         services.AddScoped<ICustomerPhoneRepository,            CustomerPhoneRepository>();
         services.AddScoped<ICustomerEmailRepository,            CustomerEmailRepository>();
         services.AddScoped<ILibraryRepository,                  LibraryRepository>();
+        services.AddScoped<IIngestionRepository,                IngestionRepository>();
+        services.AddScoped<IContractDocumentRepository,         ContractDocumentRepository>();
 
         // Services DI  ---------------------------------------------------------
         services.AddScoped<IOrganizationServices,               OrganizationServices>();
@@ -56,6 +58,12 @@ public static class DependencyInjectionSetup
         services.AddScoped<ICustomerAddressService,             CustomerAddressService>();
         services.AddScoped<IMelissaService,                     MelissaService>();
         services.AddScoped<ILibraryService,                     LibraryService>();
+        services.AddScoped<IIngestionJobService,                IngestionJobService>();
+        services.AddScoped<IContractDocumentService,            ContractDocumentService>();
+        services.AddScoped<IOrganizationStorageService,         AzureBlobOrganizationStorageService>();
+
+        // Ingestion pipeline background processor ------------------------------
+        services.AddHostedService<IngestionProcessorJob>();
 
         // Provisioning ---------------------------------------------------------
         // Queue is Singleton — lives for the app lifetime.

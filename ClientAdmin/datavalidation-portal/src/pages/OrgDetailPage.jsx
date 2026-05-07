@@ -226,6 +226,7 @@ export default function OrgDetailPage() {
         subtitle={
           <span className="d-flex flex-wrap align-items-center gap-3" style={{ fontSize: '.875rem', color: '#6b7280' }}>
             <code>{org.organizationCode}</code>
+            {org.abbreviation && <span style={{ fontWeight: 600 }}>{org.abbreviation}</span>}
             {org.phone      && <span>📞 {fmtPhone(org.phone)}</span>}
             {org.companyEmail && <span>✉️ {org.companyEmail}</span>}
             {org.website    && <a href={org.website} target="_blank" rel="noopener noreferrer" className="text-decoration-none" style={{ color: '#1a56db' }}>🌐 Website</a>}

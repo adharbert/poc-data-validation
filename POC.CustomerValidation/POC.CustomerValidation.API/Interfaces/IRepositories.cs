@@ -541,3 +541,35 @@ public interface ICustomerAddressRepository
     /// <summary>Sets CustomerConfirmed=true on the given address.</summary>
     Task<bool> ConfirmAsync(Guid addressId);
 }
+
+public interface IContractDocumentRepository
+{
+    Task<IEnumerable<ContractDocument>> GetByContractIdAsync(Guid contractId);
+    Task<ContractDocument?> GetByIdAsync(Guid documentId);
+    Task<ContractDocument> CreateAsync(ContractDocument document);
+    Task<bool> DeleteAsync(Guid documentId);
+}
+
+public interface IIngestionRepository
+{
+    // Jobs
+    Task<IngestionJob> CreateJobAsync(IngestionJob job);
+    Task<IngestionJob?> GetJobByIdAsync(Guid jobId);
+    Task<(IEnumerable<IngestionJob> Items, int TotalCount)> GetJobsByOrganizationAsync(Guid organizationId, int page, int pageSize);
+
+    /// <summary>
+    /// Atomically claims the next Pending job by setting its Status to 'Processing'.
+    /// Returns null when no pending jobs exist. Safe for concurrent callers.
+    /// </summary>
+    Task<IngestionJob?> DequeueNextPendingJobAsync();
+
+    Task UpdateJobAsync(IngestionJob job);
+
+    // Staging rows
+    Task CreateStagingRowsAsync(IEnumerable<IngestionStagingRow> rows);
+    Task<(IEnumerable<IngestionStagingRow> Items, int TotalCount)> GetStagingRowsAsync(
+        Guid jobId, string? statusFilter, int page, int pageSize);
+    Task<IEnumerable<IngestionStagingRow>> GetCommittableStagingRowsAsync(Guid jobId);
+    Task UpdateStagingRowAsync(IngestionStagingRow row);
+    Task MarkStagingRowsCommittedAsync(IEnumerable<Guid> rowIds);
+}

@@ -21,8 +21,17 @@ Organizations
     │       │                                                  │
     │       ├── FieldValues (CustomerId FK, FieldDefinitionId FK)
     │       │
-    │       └── CustomerAddresses (CustomerId FK)
-    │               └── CustomerAddresses_History  (temporal)
+    │       ├── CustomerAddresses (CustomerId FK)
+    │       │       └── CustomerAddresses_History  (temporal)
+    │       │
+    │       └── CustomerSegmentations (CustomerId FK)
+    │               └── Segmentations ◄── MarketingProjects
+    │
+    ├── Contracts
+    │
+    ├── MarketingProjects (ContractId FK, optional)
+    │       └── Segmentations (ProjectId FK)
+    │               └── CustomerSegmentations (SegmentationId FK)
     │
     └── ImportBatches
             │
@@ -487,8 +496,13 @@ Stores multiple email addresses per customer.
 
 ## Contracts
 
-One row per contract per organisation. Only one may be active at a time
-(filtered unique index).
+Header record per contract per organisation. Only one may be active at a time
+(filtered unique index). Amendments (see `ContractAmendments`) may change the
+end date or add cost to an active, non-expired contract.
+
+`OriginalEndDate` and `OriginalCost` are set at creation and never modified.
+`EndDate` and `TotalCost` are the current effective values, updated whenever
+an amendment is applied.
 
 | Column | Type | Notes |
 |---|---|---|
@@ -496,8 +510,11 @@ One row per contract per organisation. Only one may be active at a time
 | OrganizationId | UNIQUEIDENTIFIER | FK → Organizations |
 | ContractName | NVARCHAR(200) | |
 | ContractNumber | NVARCHAR(100) | NULL — external CRM reference |
-| StartDate | DATE | |
-| EndDate | DATE | NULL = open-ended |
+| StartDate | DATE | Never changed by amendments |
+| OriginalEndDate | DATE | NULL = open-ended. Set at creation, never changed. |
+| EndDate | DATE | Current effective end date — updated by amendments |
+| OriginalCost | DECIMAL(18,2) | NULL. Base contracted amount; never changed. |
+| TotalCost | DECIMAL(18,2) | NULL. `OriginalCost + SUM(AmendmentCost)`; updated by amendments. |
 | IsActive | BIT | Default 1 |
 | Notes | NVARCHAR(1000) | NULL |
 | CreatedDt | DATETIME | |
@@ -508,6 +525,95 @@ One row per contract per organisation. Only one may be active at a time
 **Constraints:**
 - `UQ_Contracts_ActivePerOrg` — filtered unique index `(OrganizationId) WHERE IsActive = 1`
 - `CK_Contracts_Dates` — `EndDate IS NULL OR EndDate >= StartDate`
+- `CK_Contracts_OriginalDates` — `OriginalEndDate IS NULL OR OriginalEndDate >= StartDate`
+- `CK_Contracts_Cost` — `TotalCost IS NULL OR TotalCost >= OriginalCost`
+
+---
+
+## ContractAmendments
+
+One row per amendment applied to a contract. Amendments are only allowed when
+the contract `IsActive = 1 AND EndDate >= today` (enforced at the service layer —
+expired contracts cannot be amended).
+
+Each amendment can change the end date (replacement) and/or add cost (additive).
+At least one of the two must be supplied.
+
+| Column | Type | Notes |
+|---|---|---|
+| Id | UNIQUEIDENTIFIER | PK, `NEWSEQUENTIALID()` |
+| ContractId | UNIQUEIDENTIFIER | FK → Contracts |
+| AmendmentNumber | INT | Sequential per contract: 1, 2, 3… |
+| AmendmentDate | DATE | Date the amendment was signed/executed |
+| PreviousEndDate | DATE NULL | Snapshot of `EndDate` before this amendment |
+| NewEndDate | DATE NULL | Replacement end date. NULL = not changing end date. |
+| AmendmentCost | DECIMAL(18,2) NULL | Additive cost increase. NULL = not changing cost. |
+| Notes | NVARCHAR(1000) | NULL |
+| DocumentFileName | NVARCHAR(260) | NULL — original filename of the uploaded amendment doc |
+| DocumentPath | NVARCHAR(1000) | NULL — storage path or URL |
+| CreatedDt | DATETIME | |
+| CreatedBy | NVARCHAR(200) | |
+
+**Constraints:**
+- `UQ_ContractAmendments_Number` — UNIQUE `(ContractId, AmendmentNumber)`
+- `CK_ContractAmendments_HasChange` — `NewEndDate IS NOT NULL OR AmendmentCost IS NOT NULL`
+- `CK_ContractAmendments_CostPositive` — `AmendmentCost IS NULL OR AmendmentCost > 0`
+
+**When an amendment is applied (service layer):**
+1. Insert row with `PreviousEndDate = Contracts.EndDate` snapshot
+2. If `NewEndDate` supplied → `UPDATE Contracts SET EndDate = NewEndDate`
+3. If `AmendmentCost` supplied → `UPDATE Contracts SET TotalCost = TotalCost + AmendmentCost`
+
+---
+
+## ContractLineItems
+
+Detail line items for a contract, organised by original terms and each amendment.
+`AmendmentId = NULL` means the line item belongs to the original contract.
+`AmendmentId = <id>` means it was introduced by that specific amendment.
+
+| Column | Type | Notes |
+|---|---|---|
+| Id | UNIQUEIDENTIFIER | PK, `NEWSEQUENTIALID()` |
+| ContractId | UNIQUEIDENTIFIER | FK → Contracts |
+| AmendmentId | UNIQUEIDENTIFIER | FK → ContractAmendments. **NULL = original contract.** |
+| LineItemDescription | NVARCHAR(500) | |
+| Quantity | DECIMAL(10,2) | NULL |
+| UnitCost | DECIMAL(18,2) | NULL |
+| TotalCost | DECIMAL(18,2) | NULL |
+| Notes | NVARCHAR(500) | NULL |
+| DisplayOrder | INT | Default 0 |
+| CreatedDt | DATETIME | |
+| CreatedBy | NVARCHAR(200) | |
+
+---
+
+## ContractDocuments
+
+Stores uploaded files (PDFs, Word docs, images) attached to a contract or a specific amendment.
+`AmendmentId = NULL` means the document belongs to the contract header.
+
+Files are stored on disk under `ContractSettings:UploadPath/{contractId}/{storedFileName}`.
+`StoredFileName` is GUID-based (collision-safe); `OriginalFileName` is preserved for display and download.
+
+| Column | Type | Notes |
+|---|---|---|
+| Id | UNIQUEIDENTIFIER | PK, `NEWSEQUENTIALID()` |
+| ContractId | UNIQUEIDENTIFIER | FK → Contracts |
+| AmendmentId | UNIQUEIDENTIFIER | FK → ContractAmendments. **NULL = contract-level document.** |
+| OriginalFileName | NVARCHAR(260) | The filename the user uploaded |
+| StoredFileName | NVARCHAR(260) | GUID-based filename used on disk |
+| StoragePath | NVARCHAR(1000) | Full path on the storage volume |
+| ContentType | NVARCHAR(100) | MIME type — used when serving the file back |
+| FileSizeBytes | BIGINT | File size in bytes |
+| UploadedAt | DATETIME2 | Default `SYSUTCDATETIME()` |
+| UploadedBy | NVARCHAR(200) | |
+
+**Accepted types:** `application/pdf`, `application/msword`, `.docx`, `image/jpeg`, `image/png`
+
+**Storage config:** `ContractSettings:UploadPath` in `appsettings.json` (default `uploads/contracts`).
+
+**Index:** `IX_ContractDocuments_Contract` on `(ContractId, AmendmentId, UploadedAt DESC)`
 
 ---
 
@@ -522,6 +628,7 @@ active simultaneously. Project IDs start at 8000.
 | OrganizationId | UNIQUEIDENTIFIER | FK → Organizations |
 | ContractId | UNIQUEIDENTIFIER | FK → Contracts, NULL (optional) |
 | ProjectName | NVARCHAR(200) | |
+| ProjectType | NVARCHAR(30) | Required. See allowed values below. |
 | MarketingStartDate | DATE | |
 | MarketingEndDate | DATE | NULL = ongoing |
 | IsActive | BIT | Default 1 |
@@ -533,9 +640,69 @@ active simultaneously. Project IDs start at 8000.
 
 **Constraints:**
 - `CK_MarketingProjects_Dates` — `MarketingEndDate IS NULL OR MarketingEndDate >= MarketingStartDate`
+- `CK_MarketingProjects_ProjectType` — enforces the allowed type list
+
+**Allowed `ProjectType` values:**
+`public_university` | `private_university` | `public_high_school` | `private_high_school` | `fraternities` | `sororities` | `military` | `general` | `story_cause`
 
 **Index:** `IX_MarketingProjects_EndDate` on `(MarketingEndDate) WHERE MarketingEndDate IS NOT NULL AND IsActive = 1`
 — supports the dashboard expiring-projects query efficiently.
+
+---
+
+## Segmentations
+
+Named groupings of customers within a marketing project. A project may have
+many segments; customers are assigned via `CustomerSegmentations`.
+
+Segments are created two ways:
+1. **Field split** — admin selects an existing imported field; distinct values become segments
+   and customers are assigned automatically based on their stored value for that field.
+2. **Import file** — a separate CSV/Excel is uploaded containing customer `OriginalId` +
+   segment key columns; customers are matched by `(OrganizationId, OriginalId)`.
+
+| Column | Type | Notes |
+|---|---|---|
+| Id | UNIQUEIDENTIFIER | PK, `NEWSEQUENTIALID()` |
+| OrganizationId | UNIQUEIDENTIFIER | FK → Organizations |
+| ProjectId | INT | FK → MarketingProjects |
+| SegmentationName | NVARCHAR(200) | Display label e.g. "Nursing" |
+| SegmentationKey | NVARCHAR(100) | Normalised key e.g. "nursing" — lowercase, no spaces |
+| Description | NVARCHAR(500) | NULL |
+| IsActive | BIT | Default 1 |
+| DisplayOrder | INT | Default 0 |
+| CreatedDt / CreatedBy / ModifiedDt / ModifiedBy | | Standard audit columns |
+
+**Constraints:**
+- `UQ_Segmentations_ProjectKey` — UNIQUE `(ProjectId, SegmentationKey)`
+
+**Indexes:**
+- `IX_Segmentations_Organization` on `(OrganizationId, IsActive)`
+- `IX_Segmentations_Project` on `(ProjectId, DisplayOrder)`
+
+---
+
+## CustomerSegmentations
+
+Junction table — many-to-many between `Customers` and `Segmentations`.
+A customer may belong to multiple segments within a project.
+
+| Column | Type | Notes |
+|---|---|---|
+| Id | UNIQUEIDENTIFIER | PK, `NEWSEQUENTIALID()` |
+| CustomerId | UNIQUEIDENTIFIER | FK → Customers |
+| SegmentationId | UNIQUEIDENTIFIER | FK → Segmentations |
+| Source | NVARCHAR(20) | `field_split` \| `import_file` \| `manual` |
+| AssignedAt | DATETIME2 | Default `SYSUTCDATETIME()` |
+| AssignedBy | NVARCHAR(200) | NULL |
+
+**Constraints:**
+- `UQ_CustomerSegmentations_CustomerSeg` — UNIQUE `(CustomerId, SegmentationId)`
+- `CK_CustomerSegmentations_Source` — `Source IN ('field_split', 'import_file', 'manual')`
+
+**Indexes:**
+- `IX_CustomerSegmentations_Customer` on `(CustomerId)`
+- `IX_CustomerSegmentations_Segmentation` on `(SegmentationId)`
 
 ---
 

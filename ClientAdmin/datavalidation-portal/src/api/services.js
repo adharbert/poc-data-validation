@@ -125,6 +125,19 @@ export const libraryApi = {
 }
 
 // ---------------------------------------------------------------------------
+// Ingestion Pipeline
+// ---------------------------------------------------------------------------
+export const ingestionApi = {
+  upload:          (orgId, formData)                    => api.upload(`/organisations/${orgId}/ingestion/upload`, formData).then(r => r.data),
+  getJobs:         (orgId, page = 1, pageSize = 20)     => api.get(`/organisations/${orgId}/ingestion`, { params: { page, pageSize } }).then(r => r.data),
+  getJob:          (orgId, jobId)                       => api.get(`/organisations/${orgId}/ingestion/${jobId}`).then(r => r.data),
+  getStagingRows:  (orgId, jobId, { status, page = 1, pageSize = 50 } = {}) =>
+    api.get(`/organisations/${orgId}/ingestion/${jobId}/staging`, { params: { status, page, pageSize } }).then(r => r.data),
+  reviewRow:       (orgId, jobId, rowId, data)          => api.post(`/organisations/${orgId}/ingestion/${jobId}/staging/${rowId}/review`, data).then(r => r.data),
+  commit:          (orgId, jobId, data)                 => api.post(`/organisations/${orgId}/ingestion/${jobId}/commit`, data).then(r => r.data),
+}
+
+// ---------------------------------------------------------------------------
 // Import Column Staging
 // ---------------------------------------------------------------------------
 export const stagingApi = {

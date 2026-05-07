@@ -297,6 +297,7 @@ export default function OrganizationsPage() {
               <thead>
                 <tr>
                   <th>Name</th>
+                  <th>Abbr.</th>
                   <th>Code</th>
                   <th>Marketing Name</th>
                   <th>Status</th>
@@ -314,6 +315,7 @@ export default function OrganizationsPage() {
                         {org.organizationName}
                       </Link>
                     </td>
+                    <td className="text-muted-sm">{org.abbreviation ?? '—'}</td>
                     <td><code className="text-muted-sm">{org.organizationCode}</code></td>
                     <td className="text-muted-sm">{org.marketingName ?? '—'}</td>
                     <td><StatusBadge active={org.isActive} /></td>

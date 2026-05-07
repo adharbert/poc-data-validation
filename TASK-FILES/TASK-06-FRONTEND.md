@@ -238,9 +238,10 @@ Each sub-page calls `useOrganization(organizationId)` to get the org name for th
 - Marketing Projects section: timeline list with progress bars showing elapsed time
 - Navigation tiles linking to Customers, Inputs, Import, Staging sub-pages
 - Phone number displayed as `XXX.XXX.XXXX` via `fmtPhone()`
+- **Abbreviation** displayed in the page subtitle alongside the org code: `<Abbr> · <Code>`
 
 ### OrganizationsPage (`/organizations`)
-- Table of all organisations with name, code, active status, created date
+- Table of all organisations with name, **abbreviation**, code, active status, created date
 - Create organisation modal (name + code)
 - Edit organisation modal (name + code + active toggle)
 - Deactivate with confirmation dialog
@@ -330,4 +331,18 @@ Custom CSS classes:
 | Page | Route | Notes |
 |---|---|---|
 | Customer detail | `/organizations/:organizationId/customers/:customerId` | Field values + change history for one customer |
+| Contract detail / amendments | modal or sub-page under OrgDetailPage | View contract; create/list amendments; upload/download documents; manage line items |
+| Project segmentations | tab or sub-page under a future ProjectDetailPage | List segments, build-from-field flow, import segmentation file |
 | Customer Validation Portal | separate Vite app on port 5174 | `ClientPortal/customer-portal/` — not yet scaffolded |
+
+### Admin SPA — API layer complete but no UI yet
+
+The following API layers are fully built with no corresponding Admin SPA screens:
+
+| Feature | API routes |
+|---|---|
+| Contract Amendments | `GET/POST /api/organisations/{orgId}/contracts/{contractId}/amendments` |
+| Contract Line Items | `GET/POST/PUT/DELETE /api/organisations/{orgId}/contracts/{contractId}/line-items` |
+| Contract Documents | `GET/POST/GET(download)/DELETE /api/organisations/{orgId}/contracts/{contractId}/documents` |
+| Project Segmentations | `GET/POST/PUT/PATCH/from-field/import` under `…/projects/{projectId}/segmentations` |
+| Project type (required) | `projectType` required on `POST /api/organisations/{orgId}/projects` — 9 allowed values — no dropdown on create/edit modal yet |

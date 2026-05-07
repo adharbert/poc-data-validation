@@ -53,11 +53,17 @@ END
 -- ============================================================
 
 GO
---:r .\Post-Deployment\01_StateOptions.sql
---GO
---:r .\Post-Deployment\02_HighestSchoolingOptions.sql
---GO
---:r .\Migrations\Migration_006b_CustomerAddresses_GeographyPoint.sql
---GO
+:r .\Post-Deployment\01_StateOptions.sql
+GO
+:r .\Post-Deployment\02_HighestSchoolingOptions.sql
+GO
+:r .\Post-Deployment\DEVOnly_01_Organizations-Fake.sql
+GO
+:r .\Post-Deployment\03_Contract_3CFDCADA.sql
+GO
+:r .\Post-Deployment\04_MarketingProject_ADX.sql
+GO
+:r .\Post-Deployment\05_LibraryFieldData.sql
+GO
 
 PRINT 'PostDeploy completed successfully.';

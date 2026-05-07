@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { orgApi, fieldApi, fieldOptionApi, customerApi, contractApi, projectApi, dashboardApi, importApi, stagingApi, sectionApi, libraryApi } from '@/api/services.js'
+import { orgApi, fieldApi, fieldOptionApi, customerApi, contractApi, projectApi, dashboardApi, importApi, stagingApi, sectionApi, libraryApi, ingestionApi } from '@/api/services.js'
 
 // ---------------------------------------------------------------------------
 // Query key registry — always use these, never raw string arrays
@@ -23,6 +23,9 @@ export const QK = {
   formPreview:       (orgId, customerId)           => ['formPreview', orgId, customerId],
   librarySections:   (inactive = false)            => ['library', 'sections', inactive],
   libraryFields:     (inactive = false)            => ['library', 'fields', inactive],
+  ingestionJobs:     (orgId, page = 1)             => ['ingestion', 'jobs', orgId, page],
+  ingestionJob:      (orgId, jobId)                => ['ingestion', 'job', orgId, jobId],
+  ingestionStaging:  (orgId, jobId, status, page)  => ['ingestion', 'staging', orgId, jobId, status ?? 'all', page],
 }
 
 // ---------------------------------------------------------------------------
@@ -422,6 +425,64 @@ export const useImportFromLibrary = (orgId) => {
     onSuccess:  () => {
       qc.invalidateQueries({ queryKey: ['sections', orgId] })
       qc.invalidateQueries({ queryKey: ['fields', orgId] })
+    },
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Ingestion Pipeline
+// ---------------------------------------------------------------------------
+
+export const useIngestionJobs = (orgId, page = 1) =>
+  useQuery({
+    queryKey: QK.ingestionJobs(orgId, page),
+    queryFn:  () => ingestionApi.getJobs(orgId, page),
+    enabled:  !!orgId,
+  })
+
+export const useIngestionJob = (orgId, jobId, { refetchInterval } = {}) =>
+  useQuery({
+    queryKey:       QK.ingestionJob(orgId, jobId),
+    queryFn:        () => ingestionApi.getJob(orgId, jobId),
+    enabled:        !!orgId && !!jobId,
+    refetchInterval,
+  })
+
+export const useIngestionStagingRows = (orgId, jobId, { status, page = 1, pageSize = 50 } = {}) =>
+  useQuery({
+    queryKey: QK.ingestionStaging(orgId, jobId, status, page),
+    queryFn:  () => ingestionApi.getStagingRows(orgId, jobId, { status, page, pageSize }),
+    enabled:  !!orgId && !!jobId,
+  })
+
+export const useUploadIngestionFile = (orgId) => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (formData) => ingestionApi.upload(orgId, formData),
+    onSuccess:  () => qc.invalidateQueries({ queryKey: ['ingestion', 'jobs', orgId] }),
+  })
+}
+
+export const useReviewStagingRow = (orgId, jobId) => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ rowId, action, reviewedBy, reason }) =>
+      ingestionApi.reviewRow(orgId, jobId, rowId, { action, reviewedBy, reason }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['ingestion', 'staging', orgId, jobId] })
+      qc.invalidateQueries({ queryKey: QK.ingestionJob(orgId, jobId) })
+    },
+  })
+}
+
+export const useCommitIngestionJob = (orgId, jobId) => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (committedBy = 'Admin') => ingestionApi.commit(orgId, jobId, { committedBy }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['ingestion', 'jobs', orgId] })
+      qc.invalidateQueries({ queryKey: QK.ingestionJob(orgId, jobId) })
+      qc.invalidateQueries({ queryKey: ['ingestion', 'staging', orgId, jobId] })
     },
   })
 }
