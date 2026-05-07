@@ -5,9 +5,7 @@ namespace POC.CustomerValidation.API.Middleware;
 // Runs after UseRouting() so route values are populated.
 // Reads the organizationId from the route and resolves the correct
 // connection string (shared or isolated) for this request.
-public class TenantResolutionMiddleware(
-    RequestDelegate next,
-    ITenantConnectionCache cache)
+public class TenantResolutionMiddleware(RequestDelegate next, ITenantConnectionCache cache)
 {
     private readonly RequestDelegate _next = next;
     private readonly ITenantConnectionCache _cache = cache;

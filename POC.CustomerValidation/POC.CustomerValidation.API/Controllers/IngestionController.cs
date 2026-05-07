@@ -23,9 +23,7 @@ namespace POC.CustomerValidation.API.Controllers;
 /// </summary>
 [Route("api/organisations/{organisationId:guid}/ingestion")]
 [ApiController]
-public class IngestionController(
-    IIngestionJobService ingestionService,
-    ILogger<IngestionController> log) : ControllerBase
+public class IngestionController(IIngestionJobService ingestionService, ILogger<IngestionController> log) : ControllerBase
 {
     private readonly IIngestionJobService   _svc = ingestionService;
     private readonly ILogger<IngestionController> _log = log;
@@ -62,6 +60,7 @@ public class IngestionController(
     // Job list / status
     // ---------------------------------------------------------------
 
+
     /// <summary>List ingestion jobs for the organisation, newest first.</summary>
     [HttpGet]
     [EndpointSummary("Ingestion — list jobs")]
@@ -75,6 +74,9 @@ public class IngestionController(
         return Ok(result);
     }
 
+
+
+
     /// <summary>Get status and row counts for a single ingestion job.</summary>
     [HttpGet("{jobId:guid}")]
     [EndpointSummary("Ingestion — job status")]
@@ -87,6 +89,9 @@ public class IngestionController(
             return NotFound(new ApiError("NOT_FOUND", $"Ingestion job {jobId} not found."));
         return Ok(job);
     }
+
+
+
 
     // ---------------------------------------------------------------
     // Staging rows
@@ -115,6 +120,9 @@ public class IngestionController(
         return Ok(rows);
     }
 
+
+
+
     // ---------------------------------------------------------------
     // Row review (approve / reject)
     // ---------------------------------------------------------------
@@ -128,9 +136,7 @@ public class IngestionController(
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(typeof(ApiError), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ApiError), StatusCodes.Status404NotFound)]
-    public async Task<IActionResult> ReviewRow(
-        Guid organisationId, Guid jobId, Guid rowId,
-        [FromBody] ReviewStagingRowRequest request)
+    public async Task<IActionResult> ReviewRow(Guid organisationId, Guid jobId, Guid rowId, [FromBody] ReviewStagingRowRequest request)
     {
         var job = await _svc.GetJobAsync(jobId);
         if (job is null || job.OrganizationId != organisationId)
@@ -151,6 +157,9 @@ public class IngestionController(
         return NoContent();
     }
 
+
+
+
     // ---------------------------------------------------------------
     // Commit
     // ---------------------------------------------------------------
@@ -164,9 +173,7 @@ public class IngestionController(
     [ProducesResponseType(typeof(IngestionJobDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiError), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ApiError), StatusCodes.Status404NotFound)]
-    public async Task<IActionResult> CommitJob(
-        Guid organisationId, Guid jobId,
-        [FromBody] CommitIngestionJobRequest? request)
+    public async Task<IActionResult> CommitJob(Guid organisationId, Guid jobId, [FromBody] CommitIngestionJobRequest? request)
     {
         var job = await _svc.GetJobAsync(jobId);
         if (job is null || job.OrganizationId != organisationId)

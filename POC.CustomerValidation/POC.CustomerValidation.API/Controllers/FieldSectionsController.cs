@@ -20,12 +20,16 @@ public class FieldSectionsController(IFieldSectionService sectionService, IField
         return Ok(sections);
     }
 
+
+
     [HttpPost("sections")]
     public async Task<IActionResult> CreateSection(Guid orgId, [FromBody] CreateFieldSectionRequest request)
     {
         var dto = await _sectionService.CreateAsync(orgId, request);
         return CreatedAtAction(nameof(GetSection), new { orgId, sectionId = dto.SectionId }, dto);
     }
+
+
 
     [HttpGet("sections/{sectionId:guid}")]
     public async Task<IActionResult> GetSection(Guid orgId, Guid sectionId)
@@ -34,12 +38,17 @@ public class FieldSectionsController(IFieldSectionService sectionService, IField
         return dto is null ? NotFound() : Ok(dto);
     }
 
+
+
     [HttpPut("sections/{sectionId:guid}")]
     public async Task<IActionResult> UpdateSection(Guid orgId, Guid sectionId, [FromBody] UpdateFieldSectionRequest request)
     {
         var dto = await _sectionService.UpdateAsync(sectionId, request);
         return Ok(dto);
     }
+
+
+
 
     [HttpPatch("sections/{sectionId:guid}/status")]
     public async Task<IActionResult> SetSectionStatus(Guid orgId, Guid sectionId, [FromBody] SectionStatusRequest request)
@@ -48,12 +57,17 @@ public class FieldSectionsController(IFieldSectionService sectionService, IField
         return NoContent();
     }
 
+
+
     [HttpPost("sections/reorder")]
     public async Task<IActionResult> ReorderSections(Guid orgId, [FromBody] ReorderSectionsRequest request)
     {
         await _sectionService.ReorderAsync(request.Sections);
         return NoContent();
     }
+
+
+
 
     // ── Field assignment to section ───────────────────────────────────────────
 
@@ -64,6 +78,9 @@ public class FieldSectionsController(IFieldSectionService sectionService, IField
         return NoContent();
     }
 
+
+
+
     // ── Form preview ─────────────────────────────────────────────────────────
 
     [HttpGet("customers/{customerId:guid}/form-preview")]
@@ -72,6 +89,11 @@ public class FieldSectionsController(IFieldSectionService sectionService, IField
         var preview = await _fieldService.GetFormPreviewAsync(orgId, customerId);
         return Ok(preview);
     }
+
+
+
 }
+
+
 
 public record SectionStatusRequest(bool IsActive);

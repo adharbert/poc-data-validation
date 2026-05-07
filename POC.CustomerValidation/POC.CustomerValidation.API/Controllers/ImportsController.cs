@@ -52,6 +52,9 @@ public class ImportsController(IImportService importService, IImportStagingServi
         return CreatedAtAction(nameof(GetBatch), new { organisationId, batchId = result.BatchId }, result);
     }
 
+
+
+
     /// <summary>List import history for the organisation, paginated.</summary>
     [HttpGet("imports")]
     [EndpointSummary("Imports — history")]
@@ -65,6 +68,9 @@ public class ImportsController(IImportService importService, IImportStagingServi
         return Ok(result);
     }
 
+
+
+
     /// <summary>Get a single import batch by Id.</summary>
     [HttpGet("imports/{batchId:guid}")]
     [EndpointSummary("Imports — get batch")]
@@ -75,6 +81,9 @@ public class ImportsController(IImportService importService, IImportStagingServi
         var result = await _importService.GetBatchAsync(batchId);
         return result is null ? NotFound() : Ok(result);
     }
+
+
+
 
     /// <summary>
     /// Check for saved column mappings for a given header fingerprint.
@@ -88,6 +97,9 @@ public class ImportsController(IImportService importService, IImportStagingServi
         var result = await _importService.GetSavedMappingsAsync(organisationId, fingerprint);
         return Ok(result);
     }
+
+
+
 
     /// <summary>
     /// Save column mappings for a batch. Every column must be mapped or skipped.
@@ -104,6 +116,9 @@ public class ImportsController(IImportService importService, IImportStagingServi
         return NoContent();
     }
 
+
+
+
     /// <summary>
     /// Preview the first 10 data rows with the saved mapping applied.
     /// Returns per-row validation status (ok, warning, error) and summary counts.
@@ -118,6 +133,9 @@ public class ImportsController(IImportService importService, IImportStagingServi
         var result = await _importService.PreviewAsync(batchId);
         return Ok(result);
     }
+
+
+
 
     /// <summary>
     /// Execute the full import for a batch. Batch must be in 'preview' status.
@@ -136,6 +154,9 @@ public class ImportsController(IImportService importService, IImportStagingServi
         return Accepted();
     }
 
+
+
+
     /// <summary>Get the error rows for a completed import batch.</summary>
     [HttpGet("imports/{batchId:guid}/errors")]
     [EndpointSummary("Imports — get error rows")]
@@ -146,6 +167,8 @@ public class ImportsController(IImportService importService, IImportStagingServi
         var result = await _importService.GetErrorsAsync(batchId);
         return Ok(result);
     }
+
+
 
     // ---------------------------------------------------------------
     // Import Column Staging
@@ -164,6 +187,9 @@ public class ImportsController(IImportService importService, IImportStagingServi
         return Ok(result);
     }
 
+
+
+
     /// <summary>Get a single staging record.</summary>
     [HttpGet("import-staging/{stagingId:guid}")]
     [EndpointSummary("Import staging — get by Id")]
@@ -174,6 +200,8 @@ public class ImportsController(IImportService importService, IImportStagingServi
         var result = await _stagingService.GetByIdAsync(stagingId);
         return result is null ? NotFound() : Ok(result);
     }
+
+
 
     /// <summary>
     /// Resolve or skip a staged column. Once resolved, the mapping is applied automatically
@@ -190,6 +218,9 @@ public class ImportsController(IImportService importService, IImportStagingServi
         return Ok(result);
     }
 
+
+
+
     /// <summary>
     /// Delete a staging record. The header will reappear as 'unmatched' on the next
     /// upload containing it. Use with caution.
@@ -204,4 +235,7 @@ public class ImportsController(IImportService importService, IImportStagingServi
         await _stagingService.DeleteAsync(stagingId);
         return NoContent();
     }
+
+
+
 }

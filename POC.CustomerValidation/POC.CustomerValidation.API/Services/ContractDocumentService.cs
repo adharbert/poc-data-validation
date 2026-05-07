@@ -37,7 +37,7 @@ public class ContractDocumentService(
             ?? throw new KeyNotFoundException($"Contract {contractId} not found.");
 
         if (!AllowedContentTypes.Contains(file.ContentType))
-            throw new InvalidOperationException(
+            throw new ArgumentException(
                 $"File type '{file.ContentType}' is not allowed. Accepted types: PDF, Word, JPEG, PNG.");
 
         var uploadRoot = config["ContractSettings:UploadPath"] ?? "uploads/contracts";

@@ -30,6 +30,8 @@ public class CustomersController(ICustomerService service, ILogger<CustomersCont
         return Ok(result);
     }
 
+
+
     /// <summary>Get a single customer by Id.</summary>
     [HttpGet("{customerId:guid}")]
     [EndpointSummary("Customers — get by Id")]
@@ -41,6 +43,8 @@ public class CustomersController(ICustomerService service, ILogger<CustomersCont
         var result = await _service.GetByIdAsync(customerId);
         return result is null ? NotFound() : Ok(result);
     }
+
+
 
     /// <summary>Create a single customer manually. CustomerCode is auto-generated.</summary>
     [HttpPost]
@@ -54,6 +58,8 @@ public class CustomersController(ICustomerService service, ILogger<CustomersCont
         return CreatedAtAction(nameof(GetById), new { organisationId, customerId = result.CustomerId }, result);
     }
 
+
+
     /// <summary>Update a customer's details.</summary>
     [HttpPut("{customerId:guid}")]
     [EndpointSummary("Customers — update")]
@@ -66,6 +72,8 @@ public class CustomersController(ICustomerService service, ILogger<CustomersCont
         return Ok(result);
     }
 
+
+
     /// <summary>Activate or deactivate a customer.</summary>
     [HttpPatch("{customerId:guid}/status")]
     [EndpointSummary("Customers — set status")]
@@ -77,4 +85,6 @@ public class CustomersController(ICustomerService service, ILogger<CustomersCont
         await _service.ChangeStatusAsync(customerId, request.IsActive);
         return NoContent();
     }
+
+
 }

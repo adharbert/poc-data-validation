@@ -33,6 +33,9 @@ public class DashboardController(IDashboardService service, IConfiguration confi
         return Ok(result);
     }
 
+
+
+
     /// <summary>
     /// Returns active projects whose MarketingEndDate falls within the configured warning window.
     /// Default window is 30 days, controlled by DashboardSettings:WarningDaysThreshold.
@@ -46,4 +49,6 @@ public class DashboardController(IDashboardService service, IConfiguration confi
         var result = await _service.GetExpiringProjectsAsync(WarningDays);
         return Ok(result);
     }
+
+
 }
