@@ -9,7 +9,7 @@ BEGIN TRY
 
     IF NOT EXISTS (
         SELECT 1 FROM dbo.MarketingProjects
-        WHERE ProjectName  = 'ADX Data Validation'
+        WHERE ProjectName  = 'UF Data Validation'
           AND OrganizationId = '3CFDCADA-ADC0-F011-B692-A0B339B26E42'
     )
     BEGIN
@@ -18,17 +18,17 @@ BEGIN TRY
         VALUES
             (
                 '3CFDCADA-ADC0-F011-B692-A0B339B26E42',
-                'ADX Data Validation',
+                'UF Data Validation',
                 '2026-05-05',
                 '2027-01-08',
                 1,
                 'andrew.harbert@publishingconcepts.com'
             );
 
-        PRINT 'Marketing project ADX Data Validation inserted.';
+        PRINT 'Marketing project UF Data Validation inserted.';
     END
     ELSE
-        PRINT 'Marketing project ADX Data Validation already exists — skipped.';
+        PRINT 'Marketing project UF Data Validation already exists — skipped.';
 
     COMMIT TRANSACTION;
 

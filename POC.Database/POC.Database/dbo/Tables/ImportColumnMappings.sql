@@ -7,6 +7,8 @@
 --  DestinationTable values:
 --    customer         = maps to a fixed Customers column
 --    customer_address = maps to a CustomerAddresses column
+--    customer_email   = maps to a CustomerEmails row
+--    customer_phone   = maps to a CustomerPhones row
 --    field_value      = maps to a FieldDefinitions row (key/value)
 --    skip             = column is ignored during import
 --
@@ -55,7 +57,10 @@ CREATE TABLE dbo.ImportColumnMappings (
     -- the same CSV column may map to multiple destinations (e.g. Email → customer + field_value).
 
     CONSTRAINT [CK_ImportColumnMappings_DestinationTable] CHECK (
-        DestinationTable IN ('customer', 'customer_address', 'field_value', 'skip')
+        DestinationTable IN (
+            'customer', 'customer_address', 'customer_email', 'customer_phone',
+            'field_value', 'skip'
+        )
     ),
 
     CONSTRAINT [CK_ImportColumnMappings_TransformType] CHECK (
@@ -64,8 +69,9 @@ CREATE TABLE dbo.ImportColumnMappings (
 
     -- For direct mappings, DestinationField must be a known column for the target table.
     -- Split transforms store outputs in ImportColumnMappingOutputs; DestinationField is NULL.
+    -- customer_email and customer_phone allow NULL DestinationField (maps to primary field).
     CONSTRAINT [CK_ImportColumnMappings_DestinationField] CHECK (
-        DestinationTable IN ('skip', 'field_value')
+        DestinationTable IN ('skip', 'field_value', 'customer_email', 'customer_phone')
         OR TransformType <> 'direct'
         OR (DestinationTable = 'customer' AND DestinationField IN (
             'FirstName', 'LastName', 'MiddleName', 'MaidenName', 'DateOfBirth',

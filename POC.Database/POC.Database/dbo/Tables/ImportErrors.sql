@@ -10,6 +10,7 @@
 --    validation   = row failed field validation (missing required, bad format)
 --    duplicate    = customer already exists (matched by email or CustomerCode)
 --    system       = unexpected error during processing
+--    warning      = row imported but with partial data (e.g. address skipped due to missing fields)
 -- ============================================================
 CREATE TABLE dbo.ImportErrors (
 	[Id]				[uniqueidentifier]		NOT NULL	DEFAULT (newsequentialid()),
@@ -27,7 +28,7 @@ CREATE TABLE dbo.ImportErrors (
         REFERENCES dbo.ImportBatches (Id),
  
     CONSTRAINT [CK_ImportErrors_Type] CHECK (
-        ErrorType IN ('validation', 'duplicate', 'system')
+        ErrorType IN ('validation', 'duplicate', 'system', 'warning')
 	)
 )
 GO

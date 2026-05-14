@@ -19,6 +19,9 @@ Location: `ClientAdmin/datavalidation-portal/`
 | sass | 1.x | SCSS preprocessing |
 | @dnd-kit/core | 6.x | Drag and drop |
 | @dnd-kit/sortable | 8.x | Sortable lists |
+| ag-grid-community | 35.x | Data grid (client-side model) — requires `ModuleRegistry.registerModules([AllCommunityModule])` |
+| ag-grid-react | 35.x | AG Grid React wrapper |
+| @microsoft/signalr | 8.x | SignalR client for real-time import status |
 | concurrently | dev | Run API + React together |
 
 **Removed / not used:**
@@ -96,14 +99,16 @@ src/
 │   └── layout/
 │       └── AppLayout.jsx  ← sidebar + topbar
 ├── hooks/
-│   └── useApi.js          ← React Query hooks
+│   ├── useApi.js          ← React Query hooks
+│   └── useImportHub.js    ← SignalR connection for real-time import status
 ├── pages/
 │   ├── DashboardPage.jsx
 │   ├── OrganizationsPage.jsx
-│   ├── OrgDetailPage.jsx  ← org landing: stats, contracts, projects, nav tiles
-│   ├── CustomersPage.jsx
+│   ├── OrgDetailPage.jsx        ← org landing: stats, contracts, projects, nav tiles
+│   ├── CustomersPage.jsx        ← AG Grid list (search, sort, filter, pagination)
+│   ├── CustomerDetailPage.jsx   ← customer info, emails, phones, addresses, field values
 │   ├── InputsPage.jsx
-│   ├── ImportPage.jsx
+│   ├── ImportPage.jsx           ← 5-step import wizard with SignalR live status
 │   └── ImportStagingPage.jsx
 └── utils/
     └── dates.js           ← fmtDate(str) → MM/dd/yyyy  |  fmtPhone(str) → XXX.XXX.XXXX
@@ -142,22 +147,27 @@ centralised in the `QK` object to keep cache invalidation consistent.
 
 ```js
 export const QK = {
-  organizations:    (inactive)              => ['organizations', inactive],
-  organization:     (id)                    => ['organizations', id],
-  fields:           (orgId, inactive)       => ['fields', orgId, inactive],
-  fieldOptions:     (fieldId)               => ['fieldOptions', fieldId],
-  customers:        (orgId, page)           => ['customers', orgId, page],
-  contracts:        (orgId)                 => ['contracts', orgId],
-  projects:         (orgId)                 => ['projects', orgId],
-  sections:         (orgId)                 => ['sections', orgId],
-  section:          (orgId, sectionId)      => ['sections', orgId, sectionId],
-  formPreview:      (orgId, customerId)     => ['formPreview', orgId, customerId],
-  dashboardStats:   ()                      => ['dashboard', 'stats'],
-  expiringProjects: ()                      => ['dashboard', 'expiring'],
-  importBatches:    (orgId)                 => ['importBatches', orgId],
-  importBatch:      (orgId, batchId)        => ['importBatch', orgId, batchId],
-  savedMappings:    (orgId, fingerprint)    => ['savedMappings', orgId, fingerprint],
-  staging:          (orgId, status)         => ['staging', orgId, status],
+  organizations:     (inactive)             => ['organizations', inactive],
+  organization:      (id)                   => ['organizations', id],
+  fields:            (orgId, inactive)      => ['fields', orgId, inactive],
+  fieldOptions:      (fieldId)              => ['fieldOptions', fieldId],
+  customers:         (orgId, page)          => ['customers', orgId, page],
+  customer:          (orgId, customerId)    => ['customer', orgId, customerId],
+  customerEmails:    (orgId, customerId)    => ['customerEmails', orgId, customerId],
+  customerPhones:    (orgId, customerId)    => ['customerPhones', orgId, customerId],
+  customerAddresses: (customerId)           => ['customerAddresses', customerId],
+  customerValues:    (customerId)           => ['customerValues', customerId],
+  contracts:         (orgId)               => ['contracts', orgId],
+  projects:          (orgId)               => ['projects', orgId],
+  sections:          (orgId)               => ['sections', orgId],
+  section:           (orgId, sectionId)    => ['sections', orgId, sectionId],
+  formPreview:       (orgId, customerId)   => ['formPreview', orgId, customerId],
+  dashboardStats:    ()                    => ['dashboard', 'stats'],
+  expiringProjects:  ()                    => ['dashboard', 'expiring'],
+  importBatches:     (orgId)               => ['importBatches', orgId],
+  importBatch:       (orgId, batchId)      => ['importBatch', orgId, batchId],
+  savedMappings:     (orgId, fingerprint)  => ['savedMappings', orgId, fingerprint],
+  staging:           (orgId, status)       => ['staging', orgId, status],
 }
 ```
 
@@ -207,6 +217,7 @@ Routes are defined in `App.jsx` as children of `<AppLayout />`:
   <Route path="organizations/:organizationId"                      element={<OrgDetailPage />} />
   <Route path="organizations/:organizationId/customers"            element={<CustomersPage />} />
   <Route path="organizations/:organizationId/inputs"               element={<InputsPage />} />
+  <Route path="organizations/:organizationId/customers/:customerId" element={<CustomerDetailPage />} />
   <Route path="organizations/:organizationId/import"               element={<ImportPage />} />
   <Route path="organizations/:organizationId/import-staging"       element={<ImportStagingPage />} />
 </Route>
@@ -220,6 +231,35 @@ it only matches the exact org detail route, not all sub-routes.
 Sub-pages (Customers, Inputs, Import, Staging) all show a 3-level breadcrumb:
 **Organisations → [Org Name] → [Current Page]** — the org name link navigates to `OrgDetailPage`.
 Each sub-page calls `useOrganization(organizationId)` to get the org name for the breadcrumb.
+
+---
+
+## AG Grid (CustomersPage)
+
+`CustomersPage` uses **AG Grid Community** (`ag-grid-community` + `ag-grid-react`) with the `ag-theme-quartz` theme.
+
+- Loads up to 2,000 records in a single request (`pageSize=2000`) — AG Grid handles client-side sorting, filtering, and pagination.
+- Pagination controls: 25 / 50 / 100 / 250 rows per page (default 50).
+- Every column is filterable and sortable without any extra code.
+- Clicking a row navigates to `/organizations/:orgId/customers/:customerId`.
+- Edit and Activate/Deactivate action buttons are in the rightmost column; `e.stopPropagation()` prevents them from triggering the row-click navigation.
+- CSS class `.cursor-pointer` is applied to every row (defined in `main.scss`) with a blue hover tint.
+
+---
+
+## SignalR — Real-time Import Status
+
+`src/hooks/useImportHub.js` wraps a SignalR `HubConnectionBuilder` connection to `/hubs/import`.
+
+**Lifecycle (inside `StepExecute`):**
+1. `useImportHub(orgId, batchId)` mounts → connects to the hub and calls `JoinBatch(batchId)` to enter group `import:{batchId}`.
+2. Server pushes `ImportStatusChanged(ImportBatchDto)` when the batch completes or fails.
+3. Hook calls `queryClient.setQueryData(QK.importBatch(...), batch)` → React Query cache is updated immediately, no HTTP round-trip.
+4. Component unmounts → `connection.stop()` called in the `useEffect` cleanup.
+
+A 30-second `refetchInterval` on `useImportBatch` acts as a fallback if the WebSocket connection drops mid-import.
+
+Vite dev proxy (`vite.config.js`) forwards `/hubs` with `ws: true` to the .NET API at the same target as `/api`.
 
 ---
 

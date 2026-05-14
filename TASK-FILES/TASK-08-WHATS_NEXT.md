@@ -18,7 +18,9 @@ The following have been fully built (API + Admin SPA):
 | Phone input masking | Live `(XXX) XXX-XXXX` formatting while typing; strips to digits on save |
 | Field Sections | Create/edit/reorder/assign, drag-and-drop in Inputs page |
 | Form Preview | Admin selects customer → reads form with live values |
-| Customers | Paginated list, create/edit/activate/deactivate |
+| Customers | AG Grid list with client-side search/sort/filter/pagination; row click opens detail |
+| Customer Detail Page | Per-customer view: core info, emails, phones, addresses, field values |
+| Customer OriginalId dedup | Import deduplicates on OriginalId first, then Email, within same org |
 | Contracts | Per-org, single active constraint enforced (list + create/edit UI only) |
 | Contract Amendments | API complete — no Admin SPA UI yet |
 | Contract Line Items | API complete — no Admin SPA UI yet |
@@ -34,6 +36,14 @@ The following have been fully built (API + Admin SPA):
 | Unit test suite | `POC.CustomerValidation.Test` — 142 xUnit tests, all 10 controllers, ≥ 90% coverage |
 | Customer Addresses | `CustomerAddresses` table (temporal), full address history per customer, `IsCurrent` flag |
 | Azure Blob Storage provisioning | `IOrganizationStorageService` / `AzureBlobOrganizationStorageService` — container created on org create; Azurite for local dev (`UseDevelopmentStorage=true`) |
+| SFTP project folders | `ProvisionProjectFolderAsync` — `imports/{projectId}/.keep` placeholder created on `MarketingProject` create; gives each project an isolated SFTP drop-zone |
+| Async import execution | `ImportProcessorBackgroundService` + `ImportQueue` (`Channel<Guid>`) — execute endpoint returns 202 immediately; worker drains queue and runs import; SignalR push notifies UI on completion |
+| SignalR import status | `ImportHub` with group `import:{batchId}`; server pushes `ImportStatusChanged` on complete/fail; client joins group on execute step mount, leaves on unmount; 30s polling fallback |
+| Import error review | `StepResults` shows errors and warnings auto-loaded; "Fix Column Mappings" (reset to pending), "Fix Value Aliases" (reset to preview), "Retry" buttons on failed batches |
+| Import History review | "Review" button on completed batches reopens the results step for any historical batch |
+| Event Grid blob webhook | `POST /api/internal/blob-events` — handles `Microsoft.Storage.BlobCreated`; auto-creates `ImportBatch` for SFTP-dropped files within seconds of upload |
+| Blob import polling (safety net) | `BlobImportPollingService` — scans `imports/{projectId}/` folders; 30-second interval in Development (Azurite), 1-hour fallback in Production; idempotent via `Notes = sftp:{blobPath}` |
+| Request body size fix | `RequestLoggingMiddleware` skips body buffering for `multipart/form-data`; upload endpoint allows files up to 50 MB |
 | Melissa stub | `IMelissaService` + stub wired into address create flow — sets `MelissaValidated` when real API is connected |
 | Number display fix | `fmtNumber()` in `src/utils/dates.js` — strips trailing zeros (`42.00` → `42`, `3.14` → `3.14`) |
 
@@ -63,21 +73,34 @@ The following have been fully built (API + Admin SPA):
 
 ---
 
-## Priority 2 — Customer Detail Page (Admin SPA)
+## Priority 2 — Analytics, Campaigns & Canonical Standardization (Phase 4)
+
+Full design captured in [TASK-10-ANALYTICS-CAMPAIGNS.md](TASK-10-ANALYTICS-CAMPAIGNS.md).
+
+Not yet started. Build order:
+1. Canonical taxonomy tables + seed data + admin mapping UI
+2. Customer scores import (CSV keyed on `CustomerCode`)
+3. Org campaign policy + project channel rules
+4. Vendor export endpoints (Five9, Iterable, mailing)
+5. Standardised cross-org reports
+
+---
+
+## ~~Priority 3 — Customer Detail Page (Admin SPA)~~ ✓ Completed
 
 **Route:** `/organizations/:organizationId/customers/:customerId`
 
-Not yet started. Link from CustomersPage row.
+Implemented in `CustomerDetailPage.jsx`. Shows:
+- Customer core information (name, email, phone, DOB, client ID, customer code)
+- All email addresses (`GET /organisations/{orgId}/customers/{customerId}/emails`)
+- All phone numbers (`GET /organisations/{orgId}/customers/{customerId}/phones`)
+- Full address history (`GET /api/customers/{customerId}/addresses`) with Current / Confirmed badges
+- All field key/value pairs (`GET /api/customers/{customerId}/values`) with confirmed status
+- Edit and Activate/Deactivate actions in the page header
 
-Needs:
-- Read-only view of all field values for that customer, grouped by section
-- Field label, current value, confirmed/flagged status per field
-- Change history table: old value → new value + who + timestamp
-- Breadcrumb: Organisations → Org name → Customers → Customer name
-
-**API endpoints already exist:**
-- `GET /api/customers/{customerId}/values`
-- `GET /api/customers/{customerId}/values/history`
+**Still not built:**
+- Change history table (field value audit trail — endpoint exists at `GET /api/customers/{id}/values/history`)
+- Address create form (addresses are read-only on this page)
 
 ---
 
@@ -160,12 +183,11 @@ App Roles (define on API registration):
 
 | Item | Notes |
 |---|---|
-| No file size limit on import | API should reject files over a configurable max (e.g. 10 MB). |
-| No async import progress | Import executes synchronously. Large files need a background job + polling endpoint. |
+| Import row throughput | Row-by-row Dapper inserts (~6 DB calls per row). 600k-row files complete correctly but slowly. Future: `SqlBulkCopy` batch insert to cut ~3.6M calls down to ~600. |
+| Import XLSX memory | ClosedXML loads the entire workbook into memory. For 600k+ row XLSX files this can use 1–3 GB RAM. Future: migrate to ExcelDataReader or OpenXml SAX streaming reader. |
 | Abbreviation not required on create | Org can be created without Abbreviation. Import will fail later — warn on org form. |
-| No customer detail page | CustomersPage rows have no drill-down yet — API already exists (`GET /api/customers/{id}/values`). |
 | Melissa not connected | `MelissaService` is a stub — always returns `IsValid=false`. Wire up real Melissa REST API when credentials available. |
-| No address UI | Admin SPA has no address form on the customer create/edit modal yet. |
+| No address UI | Admin SPA has no address create form on the customer detail page yet — addresses are read-only. |
 | Azure Storage connection string blank | `appsettings.json` has `AzureStorage:ConnectionString` empty — fill in the real Azure Blob Storage connection string before deploying to production. |
 
 ---

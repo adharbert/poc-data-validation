@@ -31,7 +31,7 @@ CREATE TABLE [dbo].[Organizations](
     [ValidTo]                   DATETIME2 (2)       GENERATED ALWAYS AS ROW END   HIDDEN CONSTRAINT [DF_Organizations_ValidTo]   DEFAULT ('9999.12.31 23:59:59.99') NOT NULL,
 
     CONSTRAINT [PK_Organizations] PRIMARY KEY CLUSTERED (Id),
-    CONSTRAINT CK_Organizations_Abbreviation_Length CHECK (LEN(Abbreviation) <= 4),
+    CONSTRAINT CK_Organizations_Abbreviation_Length CHECK (LEN(Abbreviation) <= 6),
     PERIOD FOR SYSTEM_TIME ([ValidFrom], [ValidTo])
 )
 WITH (SYSTEM_VERSIONING = ON (HISTORY_TABLE=[dbo].[Organizations_History], DATA_CONSISTENCY_CHECK=ON));
@@ -58,7 +58,7 @@ CREATE TABLE [dbo].[Customers] (
     [CustomerCode]  [nvarchar](26)      NOT NULL,
     [OrganizationId][uniqueidentifier]  NOT NULL,
     [Email]         nvarchar(150)       NULL,
-    [Phone]         nvarchar(11)        NULL,
+    [Phone]         nvarchar(20)        NULL,
     [IsActive]      bit                 NULL        DEFAULT(1),
     [CreatedDt]     datetime            NOT NULL    DEFAULT(GETUTCDATE()),
     [ModifiedDt]    datetime            NOT NULL    DEFAULT(GETUTCDATE()),
@@ -212,9 +212,10 @@ CREATE TABLE FieldDefinitions (
     [MinLength]         int                 NULL,
     [MaxLength]         int                 NULL,
     [RegExPattern]      nvarchar(500)       NULL,
-    [DisplayFormat]     nvarchar(20)        NULL,
-    [CreatedDt]         datetime            NOT NULL    DEFAULT(GETUTCDATE()),
-    [ModifiedDt]        datetime            NOT NULL    DEFAULT(GETUTCDATE()),
+    [DisplayFormat]         nvarchar(20)        NULL,
+    [OptionsSourceFieldId]  [uniqueidentifier]  NULL,
+    [CreatedDt]             datetime            NOT NULL    DEFAULT(GETUTCDATE()),
+    [ModifiedDt]            datetime            NOT NULL    DEFAULT(GETUTCDATE()),
 
     CONSTRAINT [PK_FieldDefinitions] PRIMARY KEY CLUSTERED (Id),
 
@@ -223,6 +224,9 @@ CREATE TABLE FieldDefinitions (
 
     CONSTRAINT [FK_FieldDefinitions_FieldSections]
         FOREIGN KEY([FieldSectionId]) REFERENCES [dbo].[FieldSections] ([Id]),
+
+    CONSTRAINT [FK_FieldDefinitions_OptionsSource]
+        FOREIGN KEY([OptionsSourceFieldId]) REFERENCES [dbo].[FieldDefinitions] ([Id]),
 
     CONSTRAINT [UQ_FieldDefinitions_Key] UNIQUE ([OrganizationId], [FieldKey]),
 
@@ -260,6 +264,32 @@ CREATE TABLE FieldOptions (
 GO
 
 CREATE INDEX IX_FieldOptions_Field ON FieldOptions ([FieldDefinitionId], [DisplayOrder]);
+GO
+
+
+-- -------------------------------------------------------
+-- FieldOptionAliases
+-- Per-org alias table: maps a client-supplied value to the
+-- canonical OptionKey stored in FieldOptions.
+-- Example: AliasValue='M' → CanonicalValue='male' for Gender.
+-- -------------------------------------------------------
+CREATE TABLE FieldOptionAliases (
+    [Id]                UNIQUEIDENTIFIER    NOT NULL    CONSTRAINT [DF_FieldOptionAliases_Id]          DEFAULT (NEWSEQUENTIALID()),
+    [OrganizationId]    UNIQUEIDENTIFIER    NOT NULL,
+    [FieldDefinitionId] UNIQUEIDENTIFIER    NOT NULL,
+    [AliasValue]        NVARCHAR(200)       NOT NULL,
+    [CanonicalValue]    NVARCHAR(200)       NOT NULL,
+    [CreatedDt]         DATETIME            NOT NULL    CONSTRAINT [DF_FieldOptionAliases_CreatedDt]   DEFAULT (GETUTCDATE()),
+    [ModifiedDt]        DATETIME            NOT NULL    CONSTRAINT [DF_FieldOptionAliases_ModifiedDt]  DEFAULT (GETUTCDATE()),
+
+    CONSTRAINT [PK_FieldOptionAliases]       PRIMARY KEY CLUSTERED ([Id]),
+    CONSTRAINT [FK_FieldOptionAliases_Org]   FOREIGN KEY ([OrganizationId])    REFERENCES dbo.Organizations ([Id]),
+    CONSTRAINT [FK_FieldOptionAliases_Field] FOREIGN KEY ([FieldDefinitionId]) REFERENCES dbo.FieldDefinitions ([Id]),
+    CONSTRAINT [UQ_FieldOptionAliases]       UNIQUE ([OrganizationId], [FieldDefinitionId], [AliasValue])
+);
+GO
+
+CREATE INDEX IX_FieldOptionAliases_Org   ON FieldOptionAliases ([OrganizationId], [FieldDefinitionId]);
 GO
 
 
@@ -428,6 +458,7 @@ CREATE TABLE dbo.MarketingProjects (
     [OrganizationId]        [uniqueidentifier]  NOT NULL,
     [ContractId]            [uniqueidentifier]  NULL,
     [ProjectName]           nvarchar(200)       NOT NULL,
+    [ProjectType]           nvarchar(50)        NULL,
     [MarketingStartDate]    date                NOT NULL,
     [MarketingEndDate]      date                NULL,
     [IsActive]              bit                 NOT NULL    DEFAULT (1),
@@ -465,6 +496,8 @@ CREATE TABLE dbo.ImportBatches (
     [Id]                    [uniqueidentifier]  NOT NULL    DEFAULT (newsequentialid()),
     [OrganizationId]        [uniqueidentifier]  NOT NULL,
     [FileName]              nvarchar(260)       NOT NULL,
+    [FileType]              nvarchar(10)        NOT NULL,
+    [FileStoragePath]       nvarchar(500)       NULL,
     [FileHeaders]           nvarchar(MAX)       NOT NULL,
     [HeaderFingerprint]     nvarchar(64)        NOT NULL,
     [TotalRows]             int                 NOT NULL    DEFAULT 0,
@@ -472,6 +505,7 @@ CREATE TABLE dbo.ImportBatches (
     [SkippedRows]           int                 NOT NULL    DEFAULT 0,
     [ErrorRows]             int                 NOT NULL    DEFAULT 0,
     [Status]                nvarchar(20)        NOT NULL    DEFAULT('pending'),
+    [DuplicateStrategy]     nvarchar(20)        NOT NULL    DEFAULT('skip'),
     [UploadedBy]            nvarchar(200)       NOT NULL,
     [UploadedAt]            DATETIME2           NOT NULL    DEFAULT SYSUTCDATETIME(),
     [MappingSavedAt]        DATETIME2           NULL,
@@ -522,11 +556,11 @@ CREATE TABLE dbo.ImportColumnMappings (
     CONSTRAINT [FK_ImportColumnMappings_FieldDefinition]
         FOREIGN KEY ([FieldDefinitionId]) REFERENCES dbo.FieldDefinitions ([Id]),
 
-    CONSTRAINT [UQ_ImportColumnMappings_Header]
-        UNIQUE ([ImportBatchId], [CsvHeader]),
-
     CONSTRAINT [CK_ImportColumnMappings_DestinationTable] CHECK (
-        DestinationTable IN ('customer', 'customer_address', 'field_value', 'skip')
+        DestinationTable IN (
+            'customer', 'customer_address', 'customer_email', 'customer_phone',
+            'field_value', 'skip'
+        )
     ),
 
     CONSTRAINT [CK_ImportColumnMappings_TransformType] CHECK (
@@ -534,7 +568,7 @@ CREATE TABLE dbo.ImportColumnMappings (
     ),
 
     CONSTRAINT [CK_ImportColumnMappings_DestinationField] CHECK (
-        DestinationTable IN ('skip', 'field_value')
+        DestinationTable IN ('skip', 'field_value', 'customer_email', 'customer_phone')
         OR TransformType <> 'direct'
         OR (DestinationTable = 'customer' AND DestinationField IN (
             'FirstName', 'LastName', 'MiddleName', 'MaidenName', 'DateOfBirth',
@@ -622,7 +656,7 @@ CREATE TABLE dbo.ImportErrors (
         FOREIGN KEY (ImportBatchId) REFERENCES dbo.ImportBatches (Id),
 
     CONSTRAINT [CK_ImportErrors_Type] CHECK (
-        ErrorType IN ('validation', 'duplicate', 'system')
+        ErrorType IN ('validation', 'duplicate', 'system', 'warning')
     )
 );
 GO

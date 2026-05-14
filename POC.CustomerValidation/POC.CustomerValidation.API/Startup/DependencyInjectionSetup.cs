@@ -19,9 +19,13 @@ public static class DependencyInjectionSetup
         // TenantContext is Scoped — one resolved connection per HTTP request.
         // TenantAwareConnectionFactory wraps it so all repositories route correctly.
         // TenantConnectionCache is Singleton — caches org→connection lookups.
+        // ICentralDbConnectionFactory always points to the central DB — used by LibraryRepository
+        // and other repos that read/write global (non-tenant) data.
         services.AddScoped<ITenantContext, TenantContext>();
         services.AddScoped<IDbConnectionFactory, TenantAwareConnectionFactory>();
         services.AddSingleton<ITenantConnectionCache, TenantConnectionCache>();
+        services.AddSingleton<ICentralDbConnectionFactory>(
+            _ => new SqlConnectionFactory(configuration.GetConnectionString("DefaultConnection")!));
 
         // Repositories DI  -----------------------------------------------------
         services.AddScoped<IOrganizationRepository,             OrganizationRepository>();
@@ -42,6 +46,7 @@ public static class DependencyInjectionSetup
         services.AddScoped<ILibraryRepository,                  LibraryRepository>();
         services.AddScoped<IIngestionRepository,                IngestionRepository>();
         services.AddScoped<IContractDocumentRepository,         ContractDocumentRepository>();
+        services.AddScoped<IFieldOptionAliasRepository,         FieldOptionAliasRepository>();
 
         // Services DI  ---------------------------------------------------------
         services.AddScoped<IOrganizationServices,               OrganizationServices>();
@@ -60,10 +65,18 @@ public static class DependencyInjectionSetup
         services.AddScoped<ILibraryService,                     LibraryService>();
         services.AddScoped<IIngestionJobService,                IngestionJobService>();
         services.AddScoped<IContractDocumentService,            ContractDocumentService>();
+        services.AddScoped<IFieldOptionAliasService,            FieldOptionAliasService>();
         services.AddScoped<IOrganizationStorageService,         AzureBlobOrganizationStorageService>();
 
         // Ingestion pipeline background processor ------------------------------
         services.AddHostedService<IngestionProcessorJob>();
+
+        // Import background processor ------------------------------------------
+        // Queue is Singleton — lives for the app lifetime.
+        // BackgroundService drains it by creating scopes per batch.
+        services.AddSingleton<IImportQueue,                         ImportQueue>();
+        services.AddHostedService<ImportProcessorBackgroundService>();
+        services.AddHostedService<BlobImportPollingService>();
 
         // Provisioning ---------------------------------------------------------
         // Queue is Singleton — lives for the app lifetime.
@@ -72,6 +85,8 @@ public static class DependencyInjectionSetup
         services.AddSingleton<IProvisioningQueue,               ProvisioningQueue>();
         services.AddScoped<IOrganizationProvisioningService,    OrganizationProvisioningService>();
         services.AddHostedService<DatabaseProvisioningBackgroundService>();
+        services.AddHostedService<StartupMigrationService>();
+        services.AddHostedService<StartupBlobProvisioningService>();
 
         return services;
     }

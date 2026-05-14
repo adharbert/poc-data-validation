@@ -21,7 +21,7 @@ CREATE TABLE [dbo].[Organizations](
  
 	CONSTRAINT [PK_Organizations] PRIMARY KEY CLUSTERED (Id),
 	
-	CONSTRAINT CK_Organizations_Abbreviation_Length CHECK (LEN(Abbreviation) <= 4),
+	CONSTRAINT CK_Organizations_Abbreviation_Length CHECK (LEN(Abbreviation) <= 6),
 	
     PERIOD FOR SYSTEM_TIME ([ValidFrom], [ValidTo])
 

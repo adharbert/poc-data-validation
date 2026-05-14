@@ -5,8 +5,11 @@ import OrganizationsPage   from '@/pages/OrganizationsPage.jsx'
 import OrgDetailPage       from '@/pages/OrgDetailPage.jsx'
 import InputsPage          from '@/pages/InputsPage.jsx'
 import CustomersPage       from '@/pages/CustomersPage.jsx'
+import CustomerDetailPage  from '@/pages/CustomerDetailPage.jsx'
 import ImportPage          from '@/pages/ImportPage.jsx'
 import ImportStagingPage   from '@/pages/ImportStagingPage.jsx'
+import ContractsPage        from '@/pages/ContractsPage.jsx'
+import ProjectsPage          from '@/pages/ProjectsPage.jsx'
 import LibraryPage           from '@/pages/LibraryPage.jsx'
 import IngestionPage         from '@/pages/IngestionPage.jsx'
 import IngestionReviewPage   from '@/pages/IngestionReviewPage.jsx'
@@ -21,7 +24,10 @@ export default function App() {
         <Route path="organizations/:organizationId"                                 element={<OrgDetailPage />} />
         <Route path="organizations/:organizationId/inputs"                          element={<InputsPage />} />
         <Route path="organizations/:organizationId/customers"                       element={<CustomersPage />} />
+        <Route path="organizations/:organizationId/customers/:customerId"           element={<CustomerDetailPage />} />
         <Route path="organizations/:organizationId/import"                          element={<ImportPage />} />
+        <Route path="organizations/:organizationId/contracts"                        element={<ContractsPage />} />
+        <Route path="organizations/:organizationId/projects"                         element={<ProjectsPage />} />
         <Route path="organizations/:organizationId/import-staging"                  element={<ImportStagingPage />} />
         <Route path="organizations/:organizationId/ingestion"                       element={<IngestionPage />} />
         <Route path="organizations/:organizationId/ingestion/:jobId/review"         element={<IngestionReviewPage />} />

@@ -309,6 +309,16 @@ export default function OrgDetailPage() {
         <h2 className="org-section-title mb-3">Manage Organisation</h2>
         <div className="org-nav-tiles">
           <NavTile
+            to={`/organizations/${organizationId}/contracts`}
+            icon="📄" label="Contracts"
+            desc="Manage contracts and upload supporting documents"
+          />
+          <NavTile
+            to={`/organizations/${organizationId}/projects`}
+            icon="📁" label="Projects"
+            desc="Create and manage marketing projects"
+          />
+          <NavTile
             to={`/organizations/${organizationId}/customers`}
             icon="👥" label="Customers"
             desc="Search, view, and validate customer records"

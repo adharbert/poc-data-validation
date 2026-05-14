@@ -891,6 +891,50 @@ Activate or deactivate a customer.
 
 ---
 
+### GET /api/organisations/{organisationId}/customers/{customerId}/emails
+List all email addresses for a customer.
+
+**Response:** `200 OK` — array of `CustomerEmailDto`
+
+---
+
+### GET /api/organisations/{organisationId}/customers/{customerId}/phones
+List all phone numbers for a customer.
+
+**Response:** `200 OK` — array of `CustomerPhoneDto`
+
+---
+
+### CustomerEmailDto
+```json
+{
+  "emailId": "guid",
+  "customerId": "guid",
+  "emailAddress": "jane@example.com",
+  "emailType": "personal",
+  "isPrimary": true,
+  "isActive": true,
+  "createdUtcDt": "2026-04-30T00:00:00Z",
+  "modifiedUtcDt": "2026-04-30T00:00:00Z"
+}
+```
+
+### CustomerPhoneDto
+```json
+{
+  "phoneId": "guid",
+  "customerId": "guid",
+  "phoneNumber": "2175550100",
+  "phoneType": "mobile",
+  "isPrimary": true,
+  "isActive": true,
+  "createdUtcDt": "2026-04-30T00:00:00Z",
+  "modifiedUtcDt": "2026-04-30T00:00:00Z"
+}
+```
+
+---
+
 ## Customer Addresses
 
 Address history per customer. Every address change is preserved —
@@ -1087,12 +1131,61 @@ Returns the first 10 rows with mapping applied and per-row validation status. Re
 ---
 
 ### POST /api/organisations/{organisationId}/imports/{batchId}/execute
-Runs the full import asynchronously. Returns `202 Accepted`. Poll batch status for completion.
+Enqueues the import for background execution. Returns `202 Accepted` immediately.
+The UI subscribes to SignalR group `import:{batchId}` and receives an `ImportStatusChanged`
+push when the batch reaches `completed` or `failed`. A 30-second HTTP polling fallback
+is also in place on `useImportBatch`.
+
+---
+
+### POST /api/organisations/{organisationId}/imports/{batchId}/resume
+Re-hydrates a `pending` or `preview` batch. Returns `UploadImportResponseDto` (same
+shape as the original upload response). Used to restore the 5-step wizard from import
+history without re-uploading the file.
+
+---
+
+### POST /api/organisations/{organisationId}/imports/{batchId}/reset
+Resets a completed or failed batch so it can be re-executed.
+
+**Query params:**
+- `targetStatus` — `pending` (return to column mapping; clears `MappingSavedAt`) or `preview` (keep mappings, re-run only)
+
+**Response:** `204 No Content`
+**Response:** `400 Bad Request` — invalid `targetStatus`
+**Response:** `409 Conflict` — batch is actively importing
+
+---
+
+### POST /api/organisations/{organisationId}/imports/{batchId}/cancel
+Marks a batch as `cancelled`.
+
+**Response:** `204 No Content`
+
+---
+
+### DELETE /api/organisations/{organisationId}/imports/{batchId}
+Deletes the batch record and removes the uploaded file from disk.
+
+**Response:** `204 No Content`
 
 ---
 
 ### GET /api/organisations/{organisationId}/imports/{batchId}/errors
-Returns failed rows. Returns array of `ImportErrorDto`.
+Returns all error and warning rows for a batch. `errorType` values: `validation`, `duplicate`, `system`, `warning`.
+
+**`warning` rows** are rows that were *imported* (customer created) but had partial data — for example, an address was skipped because one or more required fields were missing.
+
+Returns array of `ImportErrorDto`:
+```json
+{
+  "errorId": 1,
+  "rowNumber": 14,
+  "errorType": "warning",
+  "errorMessage": "Address skipped: missing one or more required fields (AddressLine1, City, State, PostalCode).",
+  "rawData": "[\"Jane\",\"Smith\",\"\",\"Springfield\",\"\",\"62701\"]"
+}
+```
 
 ---
 

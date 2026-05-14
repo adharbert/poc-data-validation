@@ -288,4 +288,67 @@ public class ImportRepository(IDbConnectionFactory db) : IImportRepository
         }
         tx.Commit();
     }
+
+    public async Task<ImportBatch?> GetBatchBySourceAsync(Guid organisationId, string sourceIdentifier)
+    {
+        const string sql = """
+            SELECT TOP 1
+                    Id                  AS BatchId
+                ,   OrganizationId
+                ,   FileName
+                ,   FileType
+                ,   FileHeaders
+                ,   HeaderFingerprint
+                ,   FileStoragePath
+                ,   TotalRows
+                ,   ImportedRows
+                ,   SkippedRows
+                ,   ErrorRows
+                ,   Status
+                ,   DuplicateStrategy
+                ,   UploadedBy
+                ,   UploadedAt
+                ,   MappingSavedAt
+                ,   ExecutionStartedAt
+                ,   CompletedAt
+                ,   Notes
+            FROM    ImportBatches
+            WHERE   OrganizationId = @OrganisationId
+                AND Notes = @SourceIdentifier
+            ORDER BY UploadedAt DESC
+            """;
+        using var conn = _db.CreateConnection();
+        return await conn.QuerySingleOrDefaultAsync<ImportBatch>(sql,
+            new { OrganisationId = organisationId, SourceIdentifier = sourceIdentifier });
+    }
+
+    public async Task ClearErrorsAsync(Guid batchId)
+    {
+        const string sql = "DELETE FROM ImportErrors WHERE ImportBatchId = @BatchId";
+        using var conn = _db.CreateConnection();
+        await conn.ExecuteAsync(sql, new { BatchId = batchId });
+    }
+
+    public async Task DeleteBatchAsync(Guid batchId)
+    {
+        // Delete outputs first (no cascade on MappingOutputs → Mappings in all environments)
+        const string deleteOutputsSql = """
+            DELETE o
+            FROM   ImportColumnMappingOutputs o
+            INNER JOIN ImportColumnMappings m ON m.Id = o.MappingId
+            WHERE  m.ImportBatchId = @BatchId
+            """;
+        const string deleteMappingsSql = "DELETE FROM ImportColumnMappings WHERE ImportBatchId = @BatchId";
+        const string deleteErrorsSql   = "DELETE FROM ImportErrors          WHERE ImportBatchId = @BatchId";
+        const string deleteBatchSql    = "DELETE FROM ImportBatches          WHERE Id           = @BatchId";
+
+        using var conn = (System.Data.Common.DbConnection)_db.CreateConnection();
+        await conn.OpenAsync();
+        using var tx = conn.BeginTransaction();
+        await conn.ExecuteAsync(deleteOutputsSql, new { BatchId = batchId }, tx);
+        await conn.ExecuteAsync(deleteMappingsSql, new { BatchId = batchId }, tx);
+        await conn.ExecuteAsync(deleteErrorsSql,   new { BatchId = batchId }, tx);
+        await conn.ExecuteAsync(deleteBatchSql,    new { BatchId = batchId }, tx);
+        tx.Commit();
+    }
 }

@@ -31,13 +31,24 @@ public class TenantResolutionMiddleware(RequestDelegate next, ITenantConnectionC
     private static Guid? ExtractOrgId(HttpContext context)
     {
         var routeValues = context.GetRouteData()?.Values;
-        if (routeValues is null) return null;
 
+        if (routeValues is not null)
+        {
+            foreach (var key in new[] { "organisationId", "organizationId", "orgId" })
+            {
+                if (routeValues.TryGetValue(key, out var val) &&
+                    Guid.TryParse(val?.ToString(), out var id))
+                    return id;
+            }
+        }
+
+        // Fallback: query string — covers endpoints like GET /api/fields?organizationId=...
+        // and mutation endpoints that receive orgId as ?organizationId= rather than a route segment.
         foreach (var key in new[] { "organisationId", "organizationId" })
         {
-            if (routeValues.TryGetValue(key, out var val) &&
-                Guid.TryParse(val?.ToString(), out var id))
-                return id;
+            var qs = context.Request.Query[key].FirstOrDefault();
+            if (qs is not null && Guid.TryParse(qs, out var qsId))
+                return qsId;
         }
 
         return null;

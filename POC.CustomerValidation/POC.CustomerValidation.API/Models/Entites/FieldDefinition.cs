@@ -18,7 +18,8 @@ public class FieldDefinition
     public int?     MinLength           { get; set; }
     public int?     MaxLength           { get; set; }
     public string?  RegexPattern        { get; set; }
-    public string?  DisplayFormat       { get; set; }
-    public DateTime CreatedDt           { get; set; }
+    public string?  DisplayFormat           { get; set; }
+    public Guid?    OptionsSourceFieldId    { get; set; }
+    public DateTime CreatedDt               { get; set; }
     public DateTime ModifiedDt          { get; set; }
 }

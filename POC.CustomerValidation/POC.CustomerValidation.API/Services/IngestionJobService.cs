@@ -146,7 +146,7 @@ public class IngestionJobService(
         await ingestionRepo.UpdateJobAsync(job);
 
         var stagingRows = (await ingestionRepo.GetCommittableStagingRowsAsync(jobId)).ToList();
-        var abbreviation = (org.Abbreviation ?? org.OrganizationCode[..Math.Min(4, org.OrganizationCode.Length)]).ToUpperInvariant().Trim();
+        var abbreviation = (org.Abbreviation ?? org.OrganizationCode[..Math.Min(6, org.OrganizationCode.Length)]).ToUpperInvariant().Trim();
 
         int committed = 0, failed = 0;
         var committedIds = new List<Guid>();

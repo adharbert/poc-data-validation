@@ -86,5 +86,25 @@ public class CustomersController(ICustomerService service, ILogger<CustomersCont
         return NoContent();
     }
 
+    /// <summary>List all email addresses for a customer.</summary>
+    [HttpGet("{customerId:guid}/emails")]
+    [EndpointSummary("Customers — list emails")]
+    [ProducesResponseType(typeof(IEnumerable<CustomerEmailDto>), StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetEmails(Guid organisationId, Guid customerId)
+    {
+        _log.LogInformation("GetEmails for customer {CustomerId}", customerId);
+        return Ok(await _service.GetEmailsByCustomerIdAsync(customerId));
+    }
+
+    /// <summary>List all phone numbers for a customer.</summary>
+    [HttpGet("{customerId:guid}/phones")]
+    [EndpointSummary("Customers — list phones")]
+    [ProducesResponseType(typeof(IEnumerable<CustomerPhoneDto>), StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetPhones(Guid organisationId, Guid customerId)
+    {
+        _log.LogInformation("GetPhones for customer {CustomerId}", customerId);
+        return Ok(await _service.GetPhonesByCustomerIdAsync(customerId));
+    }
+
 
 }

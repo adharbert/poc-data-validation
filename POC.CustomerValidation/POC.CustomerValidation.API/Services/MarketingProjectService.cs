@@ -6,7 +6,9 @@ namespace POC.CustomerValidation.API.Services;
 
 public class MarketingProjectService(
     IMarketingProjectRepository repo,
-    IOrganizationRepository orgRepo) : IMarketingProjectService
+    IOrganizationRepository orgRepo,
+    IOrganizationStorageService storageService,
+    ILogger<MarketingProjectService> logger) : IMarketingProjectService
 {
     private readonly IMarketingProjectRepository _repo    = repo;
     private readonly IOrganizationRepository     _orgRepo = orgRepo;
@@ -36,6 +38,7 @@ public class MarketingProjectService(
             OrganizationId      = organisationId,
             ContractId          = request.ContractId,
             ProjectName         = request.ProjectName.Trim(),
+            ProjectType         = request.ProjectType,
             MarketingStartDate  = request.MarketingStartDate,
             MarketingEndDate    = request.MarketingEndDate,
             IsActive            = true,
@@ -44,7 +47,23 @@ public class MarketingProjectService(
         };
 
         var created = await _repo.CreateAsync(project);
+        await TryProvisionProjectFolderAsync(org, created.ProjectId);
         return Map(created, org.OrganizationName);
+    }
+
+    private async Task TryProvisionProjectFolderAsync(Organization org, int projectId)
+    {
+        try
+        {
+            var containerName = storageService.GetContainerName(org.OrganizationId, org.Abbreviation);
+            await storageService.ProvisionProjectFolderAsync(containerName, projectId);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex,
+                "Failed to provision SFTP folder for project {ProjectId} in org {OrgId} — project was created successfully",
+                projectId, org.OrganizationId);
+        }
     }
 
     public async Task<MarketingProjectDto> UpdateAsync(int projectId, UpdateMarketingProjectRequest request)
@@ -54,6 +73,7 @@ public class MarketingProjectService(
 
         project.ContractId          = request.ContractId;
         project.ProjectName         = request.ProjectName.Trim();
+        project.ProjectType         = request.ProjectType;
         project.MarketingStartDate  = request.MarketingStartDate;
         project.MarketingEndDate    = request.MarketingEndDate;
         project.IsActive            = request.IsActive;
@@ -79,6 +99,7 @@ public class MarketingProjectService(
         OrganizationName    = orgName,
         ContractId          = p.ContractId,
         ProjectName         = p.ProjectName,
+        ProjectType         = p.ProjectType,
         MarketingStartDate  = p.MarketingStartDate,
         MarketingEndDate    = p.MarketingEndDate,
         IsActive            = p.IsActive,

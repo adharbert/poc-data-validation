@@ -172,6 +172,12 @@ public interface ICustomerService
 
     /// <summary>Activates or deactivates a customer.</summary>
     Task ChangeStatusAsync(Guid customerId, bool isActive);
+
+    /// <summary>Returns all email records for a customer.</summary>
+    Task<IEnumerable<CustomerEmailDto>> GetEmailsByCustomerIdAsync(Guid customerId);
+
+    /// <summary>Returns all phone records for a customer.</summary>
+    Task<IEnumerable<CustomerPhoneDto>> GetPhonesByCustomerIdAsync(Guid customerId);
 }
 
 
@@ -230,6 +236,17 @@ public interface IImportService
     /// <summary>Executes the full import for a batch.</summary>
     Task ExecuteAsync(Guid batchId);
 
+    /// <summary>Validates the batch is in preview state, transitions it to importing, and enqueues for background processing.</summary>
+    Task EnqueueAsync(Guid batchId);
+
+    /// <summary>
+    /// Creates an import batch record from a file already in blob storage.
+    /// Returns null if a batch for that blob path already exists (idempotent).
+    /// </summary>
+    Task<ImportBatchDto?> CreateBatchFromBlobAsync(
+        Guid organisationId, int projectId,
+        string containerName, string blobPath, string fileName, string uploadedBy);
+
     /// <summary>Returns paginated import history for an organisation.</summary>
     Task<PagedResult<ImportBatchDto>> GetBatchesAsync(Guid organisationId, int page = 1, int pageSize = 20);
 
@@ -238,6 +255,39 @@ public interface IImportService
 
     /// <summary>Returns error rows for a batch.</summary>
     Task<IEnumerable<ImportErrorDto>> GetErrorsAsync(Guid batchId);
+
+    /// <summary>
+    /// Sets a pending or preview batch status to 'cancelled'.
+    /// Throws InvalidOperationException if the batch is actively importing.
+    /// </summary>
+    Task CancelAsync(Guid batchId);
+
+    /// <summary>
+    /// Permanently deletes a batch and all its mappings/errors from the database and filesystem.
+    /// Throws InvalidOperationException if the batch is actively importing.
+    /// </summary>
+    Task DeleteAsync(Guid batchId);
+
+    /// <summary>
+    /// Reconstructs the upload-response shape from a stored batch so the mapping wizard
+    /// can be resumed. For 'pending' batches re-runs auto-matching; for 'preview' batches
+    /// loads the persisted column mappings.
+    /// </summary>
+    Task<UploadImportResponseDto> ResumeAsync(Guid batchId);
+
+    /// <summary>
+    /// Scans the uploaded file for distinct values in columns mapped to dropdown/multiselect
+    /// fields and returns those not yet covered by known options or existing aliases.
+    /// Used to drive the value-mapping wizard step.
+    /// </summary>
+    Task<ValueMappingResponseDto> GetValueMappingAsync(Guid batchId);
+
+    /// <summary>
+    /// Resets a completed/cancelled/failed batch back to an earlier status so it can be
+    /// remapped or re-executed. Clears error rows and execution timestamps.
+    /// targetStatus must be 'pending' (go back to column mapping) or 'preview' (re-execute only).
+    /// </summary>
+    Task ResetBatchAsync(Guid batchId, string targetStatus = "pending");
 }
 
 
@@ -334,10 +384,34 @@ public interface IContractDocumentService
 public interface IOrganizationStorageService
 {
     /// <summary>
-    /// Creates a blob container for the organization.
+    /// Creates a blob container for the organization if it does not already exist.
     /// Container name: org-{abbreviation} (lowercase, alphanumeric+hyphen) or org-{orgId prefix} as fallback.
     /// </summary>
-    Task ProvisionContainerAsync(Guid organizationId, string? abbreviation);
+    Task ProvisionContainerAsync(Guid organisationId, string? abbreviation);
+
+    /// <summary>Returns the Azure Blob container name for an org (pure name-building, no I/O).</summary>
+    string GetContainerName(Guid organisationId, string? abbreviation);
+
+    /// <summary>
+    /// Ensures the container exists, then uploads content to {feature}/{blobName}.
+    /// Returns the blob path within the container (e.g. "Contracts/ADX_20250508143022_doc.pdf").
+    /// </summary>
+    Task<string> UploadFileAsync(string containerName, string feature, string blobName, Stream content, string contentType);
+
+    /// <summary>Opens a read stream for the blob at the given path within the named container.</summary>
+    Task<Stream> DownloadFileAsync(string containerName, string blobPath);
+
+    /// <summary>Deletes the blob. No-ops if the blob does not exist.</summary>
+    Task DeleteFileAsync(string containerName, string blobPath);
+
+    /// <summary>
+    /// Creates a zero-byte .keep placeholder at imports/{projectId}/.keep, materialising the
+    /// virtual SFTP drop-zone folder for the project. Idempotent — safe to call on every project create.
+    /// </summary>
+    Task ProvisionProjectFolderAsync(string containerName, int projectId);
+
+    /// <summary>Yields the name of every blob under the given prefix in the container.</summary>
+    IAsyncEnumerable<string> ListBlobsAsync(string containerName, string prefix);
 }
 
 public interface IIngestionJobService
@@ -349,4 +423,11 @@ public interface IIngestionJobService
     Task ApproveRowAsync(Guid jobId, Guid rowId, string reviewedBy);
     Task RejectRowAsync(Guid jobId, Guid rowId, string reviewedBy, string? reason);
     Task CommitJobAsync(Guid jobId, string committedBy);
+}
+
+public interface IFieldOptionAliasService
+{
+    Task<IEnumerable<FieldOptionAliasDto>> GetByOrganizationAsync(Guid organizationId);
+    Task<IEnumerable<FieldOptionAliasDto>> BulkSaveAsync(Guid organizationId, BulkSaveAliasesRequest request);
+    Task DeleteAsync(Guid id);
 }

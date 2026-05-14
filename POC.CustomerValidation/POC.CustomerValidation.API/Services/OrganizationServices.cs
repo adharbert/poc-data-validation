@@ -9,11 +9,13 @@ namespace POC.CustomerValidation.API.Services;
 public class OrganizationServices(
     IOrganizationRepository organizationRepository,
     IProvisioningQueue provisioningQueue,
-    IOrganizationStorageService storageService) : IOrganizationServices
+    IOrganizationStorageService storageService,
+    ILogger<OrganizationServices> logger) : IOrganizationServices
 {
     private readonly IOrganizationRepository _repo = organizationRepository;
     private readonly IProvisioningQueue _provisioningQueue = provisioningQueue;
     private readonly IOrganizationStorageService _storageService = storageService;
+    private readonly ILogger<OrganizationServices> _logger = logger;
 
 
     public async Task<IEnumerable<OrganizationDto>> GetAllAsync(bool includeInactive = false, string? search = null)
@@ -36,7 +38,7 @@ public class OrganizationServices(
         if (newOrg.RequiresIsolatedDatabase)
             EnqueueProvisioning(newOrg.OrganizationId);
 
-        await _storageService.ProvisionContainerAsync(newOrg.OrganizationId, newOrg.Abbreviation);
+        await TryProvisionStorageAsync(newOrg.OrganizationId, newOrg.Abbreviation);
 
         return Map(newOrg);
     }
@@ -83,6 +85,24 @@ public class OrganizationServices(
     private void EnqueueProvisioning(Guid organizationId)
     {
         _provisioningQueue.Enqueue(organizationId);
+    }
+
+    // Storage provisioning is best-effort — a connection failure (e.g. Azurite not running
+    // locally, or a transient Azure outage) must not roll back a successfully created org.
+    // The container can be re-provisioned once storage is available.
+    private async Task TryProvisionStorageAsync(Guid organizationId, string? abbreviation)
+    {
+        try
+        {
+            await _storageService.ProvisionContainerAsync(organizationId, abbreviation);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "Storage container provisioning failed for org {OrgId} — org was created successfully. " +
+                "Start Azurite (local) or check AzureStorage:ConnectionString and re-provision manually.",
+                organizationId);
+        }
     }
 
 

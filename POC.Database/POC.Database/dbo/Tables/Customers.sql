@@ -9,7 +9,7 @@ CREATE TABLE [dbo].[Customers] (
 	[CustomerCode]			[nvarchar](26)		NOT NULL,
 	[OrganizationId]		[uniqueidentifier]	NOT NULL,
 	[Email]					nvarchar(150)		NULL,
-	[Phone]					nvarchar(11)		NULL,
+	[Phone]					nvarchar(20)		NULL,
 	[IsActive]				bit					NULL		DEFAULT(1),
 	[CreatedDt]				datetime			NOT NULL	DEFAULT(GETUTCDATE()),
 	[ModifiedDt]			datetime			NOT NULL	DEFAULT(GETUTCDATE()),

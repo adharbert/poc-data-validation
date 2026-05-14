@@ -147,6 +147,7 @@
     <None Include="scripts\Post-Deployment\05_LibraryFieldData.sql">
       <SuppressTSqlWarnings>71006</SuppressTSqlWarnings>
     </None>
+    <Build Include="dbo\Tables\FieldOptionAliases.sql" />
   </ItemGroup>
   <ItemGroup>
     <None Include="POC.Database.publish.xml" />

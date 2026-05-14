@@ -17,11 +17,13 @@ public class OrganizationProvisioningService(
     IOrganizationRepository repo,
     ITenantConnectionCache cache,
     IConfiguration config,
+    IOrganizationStorageService storageService,
     ILogger<OrganizationProvisioningService> log) : IOrganizationProvisioningService
 {
-    private readonly IOrganizationRepository _repo = repo;
-    private readonly ITenantConnectionCache _cache = cache;
-    private readonly IConfiguration _config = config;
+    private readonly IOrganizationRepository      _repo           = repo;
+    private readonly ITenantConnectionCache       _cache          = cache;
+    private readonly IConfiguration               _config         = config;
+    private readonly IOrganizationStorageService  _storageService = storageService;
     private readonly ILogger<OrganizationProvisioningService> _log = log;
 
     public async Task ProvisionAsync(Guid organizationId, CancellationToken ct = default)
@@ -46,6 +48,15 @@ public class OrganizationProvisioningService(
 
             await _repo.UpdateProvisioningStatusAsync(organizationId, "ready", connectionString);
             _cache.Invalidate(organizationId);
+
+            try
+            {
+                await _storageService.ProvisionContainerAsync(organizationId, org.Abbreviation);
+            }
+            catch (Exception ex)
+            {
+                _log.LogWarning(ex, "Blob container provisioning failed for org {OrgId} — DB is ready, storage can be retried", organizationId);
+            }
 
             _log.LogInformation("Provisioning complete for org {OrgId} ({Abbr})", organizationId, org.Abbreviation);
         }

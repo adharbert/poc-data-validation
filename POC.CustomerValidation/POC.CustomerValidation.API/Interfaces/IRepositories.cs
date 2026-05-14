@@ -377,6 +377,15 @@ public interface IImportRepository
 
     /// <summary>Upserts saved column mappings keyed by org + fingerprint + header.</summary>
     Task SaveColumnMappingsAsync(Guid organisationId, string fingerprint, IEnumerable<SavedColumnMapping> mappings);
+
+    /// <summary>Returns the first batch for an org whose Notes column matches the given source identifier, or null.</summary>
+    Task<ImportBatch?> GetBatchBySourceAsync(Guid organisationId, string sourceIdentifier);
+
+    /// <summary>Deletes a batch and all its associated mappings and errors.</summary>
+    Task DeleteBatchAsync(Guid batchId);
+
+    /// <summary>Deletes all error rows for a batch without deleting the batch itself.</summary>
+    Task ClearErrorsAsync(Guid batchId);
 }
 
 
@@ -457,8 +466,9 @@ public class FieldPreviewRaw
     public string?  HelpText            { get; set; }
     public bool     IsRequired          { get; set; }
     public int      DisplayOrder        { get; set; }
-    public string?  DisplayFormat       { get; set; }
-    public string?  ValueText           { get; set; }
+    public string?  DisplayFormat           { get; set; }
+    public Guid?    OptionsSourceFieldId    { get; set; }
+    public string?  ValueText               { get; set; }
     public decimal? ValueNumber         { get; set; }
     public DateOnly? ValueDate          { get; set; }
     public bool?    ValueBoolean        { get; set; }
@@ -572,4 +582,13 @@ public interface IIngestionRepository
     Task<IEnumerable<IngestionStagingRow>> GetCommittableStagingRowsAsync(Guid jobId);
     Task UpdateStagingRowAsync(IngestionStagingRow row);
     Task MarkStagingRowsCommittedAsync(IEnumerable<Guid> rowIds);
+}
+
+
+public interface IFieldOptionAliasRepository
+{
+    Task<IEnumerable<FieldOptionAlias>> GetByOrganizationAsync(Guid organizationId);
+    Task<IEnumerable<FieldOptionAlias>> GetByOrganizationAndFieldsAsync(Guid organizationId, IEnumerable<Guid> fieldDefinitionIds);
+    Task BulkUpsertAsync(IEnumerable<FieldOptionAlias> aliases);
+    Task DeleteAsync(Guid id);
 }

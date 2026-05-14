@@ -25,6 +25,7 @@ public class FieldDefinitionRepository(IDbConnectionFactory db) : IFieldDefiniti
         		, fd.MaxLength
         		, fd.RegExPattern
         		, fd.DisplayFormat
+        		, fd.OptionsSourceFieldId
         		, fd.CreatedDt
         		, fd.ModifiedDt
         """;
@@ -89,8 +90,8 @@ public class FieldDefinitionRepository(IDbConnectionFactory db) : IFieldDefiniti
         fieldDefinition.ModifiedDt = DateTime.UtcNow;
 
         const string sql = """
-                INSERT INTO FieldDefinitions (Id, OrganizationId, FieldSectionId, FieldKey, FieldLabel, FieldType, PlaceHolderText, HelpText, IsRequired, IsActive, DisplayOrder, MinValue, MaxValue, MinLength, MaxLength, RegExPattern, DisplayFormat, CreatedDt, ModifiedDt)
-                VALUES (@FieldDefinitionId, @OrganizationId, @FieldSectionId, @FieldKey, @FieldLabel, @FieldType, @Placeholder, @HelpText, @IsRequired, @IsActive, @DisplayOrder, @MinValue, @MaxValue, @MinLength, @MaxLength, @RegexPattern, @DisplayFormat, @CreatedDt, @ModifiedDt)
+                INSERT INTO FieldDefinitions (Id, OrganizationId, FieldSectionId, FieldKey, FieldLabel, FieldType, PlaceHolderText, HelpText, IsRequired, IsActive, DisplayOrder, MinValue, MaxValue, MinLength, MaxLength, RegExPattern, DisplayFormat, OptionsSourceFieldId, CreatedDt, ModifiedDt)
+                VALUES (@FieldDefinitionId, @OrganizationId, @FieldSectionId, @FieldKey, @FieldLabel, @FieldType, @Placeholder, @HelpText, @IsRequired, @IsActive, @DisplayOrder, @MinValue, @MaxValue, @MinLength, @MaxLength, @RegexPattern, @DisplayFormat, @OptionsSourceFieldId, @CreatedDt, @ModifiedDt)
             """;
         using var connection = _db.CreateConnection();
         await connection.ExecuteAsync(sql, fieldDefinition);
@@ -103,23 +104,24 @@ public class FieldDefinitionRepository(IDbConnectionFactory db) : IFieldDefiniti
 
         const string sql = """
                 UPDATE FieldDefinitions
-                SET    OrganizationId   = @OrganizationId,
-                       FieldSectionId   = @FieldSectionId,
-                       FieldKey         = @FieldKey,
-                       FieldLabel       = @FieldLabel,
-                       FieldType        = @FieldType,
-                       PlaceHolderText  = @Placeholder,
-                       HelpText         = @HelpText,
-                       IsRequired       = @IsRequired,
-                       IsActive         = @IsActive,
-                       DisplayOrder     = @DisplayOrder,
-                       MinValue         = @MinValue,
-                       MaxValue         = @MaxValue,
-                       MinLength        = @MinLength,
-                       MaxLength        = @MaxLength,
-                       RegExPattern     = @RegexPattern,
-                       DisplayFormat    = @DisplayFormat,
-                       ModifiedDt       = @ModifiedDt
+                SET    OrganizationId       = @OrganizationId,
+                       FieldSectionId       = @FieldSectionId,
+                       FieldKey             = @FieldKey,
+                       FieldLabel           = @FieldLabel,
+                       FieldType            = @FieldType,
+                       PlaceHolderText      = @Placeholder,
+                       HelpText             = @HelpText,
+                       IsRequired           = @IsRequired,
+                       IsActive             = @IsActive,
+                       DisplayOrder         = @DisplayOrder,
+                       MinValue             = @MinValue,
+                       MaxValue             = @MaxValue,
+                       MinLength            = @MinLength,
+                       MaxLength            = @MaxLength,
+                       RegExPattern         = @RegexPattern,
+                       DisplayFormat        = @DisplayFormat,
+                       OptionsSourceFieldId = @OptionsSourceFieldId,
+                       ModifiedDt           = @ModifiedDt
                 WHERE  Id = @FieldDefinitionId
             """;
 
@@ -184,6 +186,7 @@ public class FieldDefinitionRepository(IDbConnectionFactory db) : IFieldDefiniti
                     ,   fd.IsRequired
                     ,   fd.DisplayOrder
                     ,   fd.DisplayFormat
+                    ,   fd.OptionsSourceFieldId
                     ,   fv.ValueText
                     ,   fv.ValueNumber
                     ,   fv.ValueDate

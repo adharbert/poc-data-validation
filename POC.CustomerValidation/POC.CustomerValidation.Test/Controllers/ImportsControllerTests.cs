@@ -473,7 +473,7 @@ public class ImportsControllerTests
 
     private static ColumnMappingDto BuildDirectMapping() => new()
     {
-        ColumnIndex      = 0,
+        CsvColumnIndex   = 0,
         CsvHeader        = "email",
         DestinationTable = "customer",
         DestinationField = "Email",
@@ -483,7 +483,7 @@ public class ImportsControllerTests
 
     private static ColumnMappingDto BuildAddressMapping() => new()
     {
-        ColumnIndex      = 1,
+        CsvColumnIndex   = 1,
         CsvHeader        = "address_line1",
         DestinationTable = "customer_address",
         DestinationField = "AddressLine1",
@@ -493,7 +493,7 @@ public class ImportsControllerTests
 
     private static ColumnMappingDto BuildSplitMapping() => new()
     {
-        ColumnIndex      = 2,
+        CsvColumnIndex   = 2,
         CsvHeader        = "full_name",
         DestinationTable = "customer",
         DestinationField = null,

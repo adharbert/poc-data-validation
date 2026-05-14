@@ -4,10 +4,16 @@ using POC.CustomerValidation.API.Models.Entites;
 
 namespace POC.CustomerValidation.API.Services;
 
-public class CustomerService(ICustomerRepository repo, IOrganizationRepository orgRepo) : ICustomerService
+public class CustomerService(
+    ICustomerRepository repo,
+    IOrganizationRepository orgRepo,
+    ICustomerEmailRepository emailRepo,
+    ICustomerPhoneRepository phoneRepo) : ICustomerService
 {
-    private readonly ICustomerRepository     _repo    = repo;
-    private readonly IOrganizationRepository _orgRepo = orgRepo;
+    private readonly ICustomerRepository     _repo      = repo;
+    private readonly IOrganizationRepository _orgRepo   = orgRepo;
+    private readonly ICustomerEmailRepository _emailRepo = emailRepo;
+    private readonly ICustomerPhoneRepository _phoneRepo = phoneRepo;
 
     public async Task<PagedResult<CustomerDto>> GetByOrganisationIdAsync(
         Guid organisationId, bool includeInactive = false, int page = 1, int pageSize = 50)
@@ -27,7 +33,7 @@ public class CustomerService(ICustomerRepository repo, IOrganizationRepository o
         var org = await _orgRepo.GetByIdAsync(organisationId)
             ?? throw new KeyNotFoundException($"Organisation {organisationId} not found.");
 
-        var abbreviation = (org.Abbreviation ?? org.OrganizationCode[..Math.Min(4, org.OrganizationCode.Length)]).ToUpperInvariant().Trim();
+        var abbreviation = (org.Abbreviation ?? org.OrganizationCode[..Math.Min(6, org.OrganizationCode.Length)]).ToUpperInvariant().Trim();
         var customerCode = GenerateCustomerCode(abbreviation);
 
         var customer = new Customer
@@ -68,11 +74,47 @@ public class CustomerService(ICustomerRepository repo, IOrganizationRepository o
         if (!ok) throw new KeyNotFoundException($"Customer {customerId} not found.");
     }
 
+    public async Task<IEnumerable<CustomerEmailDto>> GetEmailsByCustomerIdAsync(Guid customerId)
+    {
+        var emails = await _emailRepo.GetByCustomerIdAsync(customerId);
+        return emails.Select(MapEmail);
+    }
+
+    public async Task<IEnumerable<CustomerPhoneDto>> GetPhonesByCustomerIdAsync(Guid customerId)
+    {
+        var phones = await _phoneRepo.GetByCustomerIdAsync(customerId);
+        return phones.Select(MapPhone);
+    }
+
     private static string GenerateCustomerCode(string abbreviation)
     {
         var suffix = Ulid.NewUlid().ToString()[..10];
         return $"{abbreviation}-{suffix}";
     }
+
+    private static CustomerEmailDto MapEmail(CustomerEmail e) => new()
+    {
+        EmailId       = e.EmailId,
+        CustomerId    = e.CustomerId,
+        EmailAddress  = e.EmailAddress,
+        EmailType     = e.EmailType,
+        IsPrimary     = e.IsPrimary,
+        IsActive      = e.IsActive,
+        CreatedUtcDt  = e.CreatedUtcDt,
+        ModifiedUtcDt = e.ModifiedUtcDt,
+    };
+
+    private static CustomerPhoneDto MapPhone(CustomerPhone p) => new()
+    {
+        PhoneId       = p.PhoneId,
+        CustomerId    = p.CustomerId,
+        PhoneNumber   = p.PhoneNumber,
+        PhoneType     = p.PhoneType,
+        IsPrimary     = p.IsPrimary,
+        IsActive      = p.IsActive,
+        CreatedUtcDt  = p.CreatedUtcDt,
+        ModifiedUtcDt = p.ModifiedUtcDt,
+    };
 
     private static CustomerDto Map(Customer c) => new()
     {

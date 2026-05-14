@@ -1,4 +1,6 @@
+using POC.CustomerValidation.API.Hubs;
 using POC.CustomerValidation.API.Middleware;
+using POC.CustomerValidation.API.Services.Provisioning;
 using POC.CustomerValidation.API.Startup;
 using Scalar.AspNetCore;
 
@@ -30,8 +32,13 @@ builder.Services.AddCors(options =>
 // Handle DI setups.  Startup/DependencyInjectionSetup.cs
 builder.Services.RegisterServices(builder.Configuration);
 
+// Auto-start Azurite in Development so Azure Storage works without a separate terminal.
+if (builder.Environment.IsDevelopment())
+    builder.Services.AddHostedService<AzuriteHostedService>();
+
 
 // Add services to the container.
+builder.Services.AddSignalR();
 builder.Services.AddControllers();
 
 builder.Services.AddOpenApi();
@@ -78,6 +85,7 @@ app.MapScalarApiReference(options =>
 app.UseHttpsRedirection();
 app.UseAuthorization();
 app.MapControllers();
+app.MapHub<ImportHub>("/hubs/import");
 app.MapHealthChecks("/health");
 
 app.Run();

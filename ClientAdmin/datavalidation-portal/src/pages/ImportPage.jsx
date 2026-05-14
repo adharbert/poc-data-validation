@@ -1,22 +1,27 @@
-import { useState, useRef, useCallback } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import {
-  useOrganization, useFields,
+  useOrganization, useFields, useSections,
   useUploadImport, useSaveMappings, usePreviewImport,
   useExecuteImport, useImportBatch, useImportBatches,
+  useResumeImport, useCancelImport, useDeleteImport,
+  useResetImport, useValueMapping, useSaveAliases,
 } from '@/hooks/useApi.js'
-import { importApi } from '@/api/services.js'
+import { useImportHub } from '@/hooks/useImportHub.js'
+import { importApi, fieldApi } from '@/api/services.js'
 import {
-  PageHeader, LoadingState, ErrorAlert, ImportStatusBadge, EmptyState, useToast,
+  PageHeader, LoadingState, ImportStatusBadge, EmptyState, useToast,
 } from '@/components/common/index.jsx'
 import { fmtDate } from '@/utils/dates.js'
 
-const STEPS = ['Upload', 'Map Columns', 'Preview', 'Execute', 'Done']
+const STEPS = ['Upload', 'Map Columns', 'Value Mapping', 'Preview', 'Execute', 'Done']
 
 const DEST_TABLES = [
   { value: 'skip',             label: '— Skip —' },
   { value: 'customer',         label: 'Customer' },
   { value: 'customer_address', label: 'Address' },
+  { value: 'customer_email',   label: 'Email' },
+  { value: 'customer_phone',   label: 'Phone' },
   { value: 'field_value',      label: 'Key / Value Field' },
 ]
 
@@ -44,6 +49,28 @@ const ADDRESS_FIELDS = [
   { value: 'Longitude',    label: 'Longitude' },
 ]
 
+const EMAIL_FIELDS = [
+  { value: 'EmailAddress', label: 'Email Address' },
+  { value: 'EmailType',    label: 'Email Type (personal / work / other)' },
+  { value: 'IsPrimary',    label: 'Is Primary (1/0)' },
+]
+
+const PHONE_FIELDS = [
+  { value: 'PhoneNumber', label: 'Phone Number' },
+  { value: 'PhoneType',   label: 'Phone Type (mobile / home / work / fax / other)' },
+  { value: 'IsPrimary',   label: 'Is Primary (1/0)' },
+]
+
+const FIELD_TYPES = [
+  { value: 'text',        label: 'Text' },
+  { value: 'number',      label: 'Number' },
+  { value: 'date',        label: 'Date' },
+  { value: 'checkbox',    label: 'Yes / No' },
+  { value: 'dropdown',    label: 'Dropdown' },
+  { value: 'multiselect', label: 'Multi-select' },
+  { value: 'phone',       label: 'Phone' },
+]
+
 const DEFAULT_SPLIT_FULL_NAME_OUTPUTS = [
   { outputToken: 'FirstName',   destinationTable: 'customer', destinationField: 'FirstName',  sortOrder: 0 },
   { outputToken: 'MiddleName',  destinationTable: 'customer', destinationField: 'MiddleName', sortOrder: 1 },
@@ -64,7 +91,13 @@ const DEFAULT_SPLIT_FULL_ADDRESS_OUTPUTS = [
 function fieldsForTable(table) {
   if (table === 'customer')         return CUSTOMER_FIELDS
   if (table === 'customer_address') return ADDRESS_FIELDS
+  if (table === 'customer_email')   return EMAIL_FIELDS
+  if (table === 'customer_phone')   return PHONE_FIELDS
   return []
+}
+
+function slugify(label) {
+  return label.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')
 }
 
 // ---------------------------------------------------------------------------
@@ -168,56 +201,139 @@ function StepUpload({ orgId, onUploaded }) {
 // Step 2 — Map Columns
 // ---------------------------------------------------------------------------
 
-// A compact secondary destination row shown below the primary mapping
-function ExtraMappingRow({ extra, fieldDefs, onChange, onRemove }) {
-  const fields = fieldsForTable(extra.destinationTable)
+// Inline "Create new field" mini-form shown when user picks the create option
+function CreateFieldInline({ orgId, onCreated, onCancel }) {
+  const toast = useToast()
+  const { data: sections } = useSections(orgId)
+  const [label,     setLabel]     = useState('')
+  const [type,      setType]      = useState('text')
+  const [sectionId, setSectionId] = useState('')
+  const [saving,    setSaving]    = useState(false)
+
+  async function handleCreate() {
+    if (!label.trim()) return
+    setSaving(true)
+    try {
+      const created = await fieldApi.create(orgId, {
+        organizationId:  orgId,
+        sectionId:       sectionId ? Number(sectionId) : null,
+        fieldKey:        slugify(label.trim()),
+        fieldLabel:      label.trim(),
+        fieldType:       type,
+        placeholderText: null,
+        helpText:        null,
+      })
+      onCreated(created)
+    } catch (err) {
+      toast(err.message ?? 'Could not create field.', 'danger')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const derivedKey = slugify(label.trim())
 
   return (
-    <div className="d-flex align-items-center gap-2 ms-4 mt-1 flex-wrap">
-      <span className="text-muted" style={{ fontSize: '.75rem', minWidth: 60 }}>also →</span>
-
-      <select
-        className="form-select form-select-sm"
-        style={{ width: 'auto', minWidth: 140 }}
-        value={extra.destinationTable}
-        onChange={e => onChange({ destinationTable: e.target.value, destinationField: null, fieldDefinitionId: null })}
-      >
-        {DEST_TABLES.filter(t => t.value !== 'skip').map(t => (
-          <option key={t.value} value={t.value}>{t.label}</option>
-        ))}
-      </select>
-
-      {(extra.destinationTable === 'customer' || extra.destinationTable === 'customer_address') && (
-        <select
-          className="form-select form-select-sm"
-          style={{ width: 'auto', minWidth: 150 }}
-          value={extra.destinationField ?? ''}
-          onChange={e => onChange({ destinationField: e.target.value || null })}
-        >
-          <option value="">— Select field —</option>
-          {fields.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
+    <div className="mt-1 ms-1 p-2 border rounded-2 bg-light" style={{ fontSize: '.8rem' }}>
+      <div className="d-flex align-items-center gap-2 flex-wrap">
+        <input
+          className="form-control form-control-sm"
+          style={{ width: 180 }}
+          placeholder="Field label"
+          value={label}
+          onChange={e => setLabel(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && handleCreate()}
+          autoFocus
+        />
+        <select className="form-select form-select-sm" style={{ width: 130 }} value={type} onChange={e => setType(e.target.value)}>
+          {FIELD_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
         </select>
-      )}
-
-      {extra.destinationTable === 'field_value' && (
-        <select
-          className="form-select form-select-sm"
-          style={{ width: 'auto', minWidth: 180 }}
-          value={extra.fieldDefinitionId ?? ''}
-          onChange={e => onChange({ fieldDefinitionId: e.target.value || null })}
-        >
-          <option value="">— Select field —</option>
-          {fieldDefs.map(fd => <option key={fd.fieldDefinitionId} value={fd.fieldDefinitionId}>{fd.fieldLabel}</option>)}
+        <select className="form-select form-select-sm" style={{ width: 150 }} value={sectionId} onChange={e => setSectionId(e.target.value)}>
+          <option value="">No section</option>
+          {(sections ?? []).map(s => <option key={s.sectionId} value={s.sectionId}>{s.sectionName}</option>)}
         </select>
+        <button className="btn btn-sm btn-primary" onClick={handleCreate} disabled={saving || !label.trim()}>
+          {saving ? '…' : 'Create'}
+        </button>
+        <button className="btn btn-sm btn-link text-muted p-0" onClick={onCancel}>Cancel</button>
+      </div>
+      {derivedKey && (
+        <div className="mt-1 text-muted" style={{ fontSize: '.75rem' }}>
+          Field name: <code>{derivedKey}</code>
+        </div>
       )}
-
-      <button type="button" className="btn btn-sm btn-outline-danger ms-1" style={{ padding: '1px 6px', fontSize: '.75rem' }} onClick={onRemove}>✕</button>
     </div>
   )
 }
 
-function MappingRow({ m, index, fieldDefs, onChange, onAddExtra, onChangeExtra, onRemoveExtra }) {
+// A compact secondary destination row shown below the primary mapping
+function ExtraMappingRow({ extra, orgId, fieldDefs, onChange, onRemove, onFieldCreated }) {
+  const fields = fieldsForTable(extra.destinationTable)
+  const [creating, setCreating] = useState(false)
+
+  function handleCreated(newField) {
+    setCreating(false)
+    onFieldCreated?.(newField)
+    onChange({ fieldDefinitionId: newField.fieldDefinitionId })
+  }
+
+  return (
+    <div className="ms-4 mt-1">
+      <div className="d-flex align-items-center gap-2 flex-wrap">
+        <span className="text-muted" style={{ fontSize: '.75rem', minWidth: 60 }}>also →</span>
+
+        <select
+          className="form-select form-select-sm"
+          style={{ width: 'auto', minWidth: 140 }}
+          value={extra.destinationTable}
+          onChange={e => onChange({ destinationTable: e.target.value, destinationField: null, fieldDefinitionId: null })}
+        >
+          {DEST_TABLES.filter(t => t.value !== 'skip').map(t => (
+            <option key={t.value} value={t.value}>{t.label}</option>
+          ))}
+        </select>
+
+        {(extra.destinationTable === 'customer' || extra.destinationTable === 'customer_address') && (
+          <select
+            className="form-select form-select-sm"
+            style={{ width: 'auto', minWidth: 150 }}
+            value={extra.destinationField ?? ''}
+            onChange={e => onChange({ destinationField: e.target.value || null })}
+          >
+            <option value="">— Select field —</option>
+            {fields.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
+          </select>
+        )}
+
+        {extra.destinationTable === 'field_value' && (
+          <select
+            className="form-select form-select-sm"
+            style={{ width: 'auto', minWidth: 180 }}
+            value={creating ? '__create__' : (extra.fieldDefinitionId ?? '')}
+            onChange={e => {
+              if (e.target.value === '__create__') { setCreating(true) }
+              else { setCreating(false); onChange({ fieldDefinitionId: e.target.value || null }) }
+            }}
+          >
+            <option value="">— Select field —</option>
+            {fieldDefs.map(fd => <option key={fd.fieldDefinitionId} value={fd.fieldDefinitionId}>{fd.fieldLabel}</option>)}
+            <option value="__create__">+ Create new field…</option>
+          </select>
+        )}
+
+        <button type="button" className="btn btn-sm btn-outline-danger ms-1" style={{ padding: '1px 6px', fontSize: '.75rem' }} onClick={onRemove}>✕</button>
+      </div>
+
+      {creating && extra.destinationTable === 'field_value' && (
+        <CreateFieldInline orgId={orgId} onCreated={handleCreated} onCancel={() => setCreating(false)} />
+      )}
+    </div>
+  )
+}
+
+function MappingRow({ m, index, orgId, fieldDefs, onChange, onAddExtra, onChangeExtra, onRemoveExtra, onFieldCreated }) {
   const [showOutputs, setShowOutputs] = useState(false)
+  const [creating, setCreating]       = useState(false)
 
   function handleTableChange(table) {
     const update = { destinationTable: table, destinationField: null, fieldDefinitionId: null, transformType: 'direct', outputs: [] }
@@ -237,6 +353,8 @@ function MappingRow({ m, index, fieldDefs, onChange, onAddExtra, onChangeExtra, 
   }
 
   function handleFieldDefChange(id) {
+    if (id === '__create__') { setCreating(true); return }
+    setCreating(false)
     onChange(index, { fieldDefinitionId: id || null })
   }
 
@@ -245,6 +363,12 @@ function MappingRow({ m, index, fieldDefs, onChange, onAddExtra, onChangeExtra, 
       ti === tokenIndex ? { ...o, destinationField: field || null, destinationTable: field ? o.destinationTable : 'skip' } : o
     )
     onChange(index, { outputs })
+  }
+
+  function handleCreated(newField) {
+    setCreating(false)
+    onFieldCreated?.(newField)
+    onChange(index, { fieldDefinitionId: newField.fieldDefinitionId })
   }
 
   const isSplit      = m.transformType === 'split_full_name' || m.transformType === 'split_full_address'
@@ -293,16 +417,17 @@ function MappingRow({ m, index, fieldDefs, onChange, onAddExtra, onChangeExtra, 
           )
         ) : null}
 
-        {/* FieldDefinition picker for field_value */}
+        {/* FieldDefinition picker for field_value — with create option */}
         {m.destinationTable === 'field_value' && (
           <select
             className="form-select form-select-sm"
             style={{ width: 'auto', minWidth: 180 }}
-            value={m.fieldDefinitionId ?? ''}
+            value={creating ? '__create__' : (m.fieldDefinitionId ?? '')}
             onChange={e => handleFieldDefChange(e.target.value)}
           >
             <option value="">— Select field —</option>
             {fieldDefs.map(fd => <option key={fd.fieldDefinitionId} value={fd.fieldDefinitionId}>{fd.fieldLabel}</option>)}
+            <option value="__create__">+ Create new field…</option>
           </select>
         )}
 
@@ -333,6 +458,11 @@ function MappingRow({ m, index, fieldDefs, onChange, onAddExtra, onChangeExtra, 
         )}
       </div>
 
+      {/* Inline create-field form */}
+      {creating && m.destinationTable === 'field_value' && (
+        <CreateFieldInline orgId={orgId} onCreated={handleCreated} onCancel={() => setCreating(false)} />
+      )}
+
       {/* Split output token assignments */}
       {isSplit && showOutputs && (
         <div className="ms-4 mt-2 ps-3 border-start" style={{ borderColor: '#e5e7eb' }}>
@@ -361,9 +491,11 @@ function MappingRow({ m, index, fieldDefs, onChange, onAddExtra, onChangeExtra, 
         <ExtraMappingRow
           key={ei}
           extra={extra}
+          orgId={orgId}
           fieldDefs={fieldDefs}
           onChange={patch => onChangeExtra(index, ei, patch)}
           onRemove={() => onRemoveExtra(index, ei)}
+          onFieldCreated={onFieldCreated}
         />
       ))}
 
@@ -382,25 +514,49 @@ function MappingRow({ m, index, fieldDefs, onChange, onAddExtra, onChangeExtra, 
   )
 }
 
-function StepMapping({ orgId, batch, autoMatches, fieldDefs, onSaved }) {
+function StepMapping({ orgId, batch, autoMatches, fieldDefs: initialFieldDefs, onSaved }) {
   const toast    = useToast()
   const save     = useSaveMappings(orgId)
 
-  const [mappings, setMappings] = useState(() =>
-    autoMatches.map((m, i) => ({
-      csvHeader:        m.csvHeader,
-      csvColumnIndex:   m.columnIndex ?? i,
-      destinationTable: m.destinationTable ?? 'skip',
-      destinationField: m.destinationField ?? null,
-      fieldDefinitionId:m.fieldDefinitionId ?? null,
-      transformType:    m.transformType ?? 'direct',
-      isAutoMatched:    m.isAutoMatched ?? false,
-      saveForReuse:     true,
-      displayOrder:     i,
-      outputs:          m.outputs ?? [],
-      extraMappings:    [],
-    }))
-  )
+  // Allow newly-created fields to appear in pickers within this session
+  const [fieldDefs, setFieldDefs] = useState(initialFieldDefs)
+
+  // Group auto-matches: if two entries share the same csvHeader they represent
+  // a primary mapping + one or more extra destinations (loaded from a resumed batch).
+  const [mappings, setMappings] = useState(() => {
+    const grouped = {}
+    autoMatches.forEach((m, i) => {
+      const key = `${m.csvHeader}__${m.columnIndex ?? i}`
+      if (!grouped[key]) {
+        grouped[key] = {
+          csvHeader:        m.csvHeader,
+          csvColumnIndex:   m.columnIndex ?? i,
+          destinationTable: m.destinationTable ?? 'skip',
+          destinationField: m.destinationField ?? null,
+          fieldDefinitionId:m.fieldDefinitionId ?? null,
+          transformType:    m.transformType ?? 'direct',
+          isAutoMatched:    m.isAutoMatched ?? false,
+          saveForReuse:     true,
+          displayOrder:     i,
+          outputs:          m.outputs ?? [],
+          extraMappings:    [],
+        }
+      } else if (m.matchStatus === 'extra') {
+        grouped[key].extraMappings.push({
+          destinationTable:  m.destinationTable ?? 'field_value',
+          destinationField:  m.destinationField ?? null,
+          fieldDefinitionId: m.fieldDefinitionId ?? null,
+        })
+      }
+    })
+    return Object.values(grouped)
+  })
+
+  // When a new field is created inline, add it to the local fieldDefs list
+  // so it's immediately selectable in other rows without reloading the page.
+  function handleFieldCreated(newField) {
+    setFieldDefs(prev => [...prev, newField])
+  }
 
   function handleChange(index, patch) {
     setMappings(prev => prev.map((m, i) => i === index ? { ...m, ...patch } : m))
@@ -416,7 +572,12 @@ function StepMapping({ orgId, batch, autoMatches, fieldDefs, onSaved }) {
   function handleChangeExtra(index, extraIndex, patch) {
     setMappings(prev => prev.map((m, i) => i !== index ? m : {
       ...m,
-      extraMappings: m.extraMappings.map((e, ei) => ei === extraIndex ? { ...e, ...patch } : e),
+      extraMappings: m.extraMappings.map((e, ei) => {
+        if (ei !== extraIndex) return e
+        const merged = { ...e, ...patch }
+        // If a new field was created from an ExtraMappingRow, add it to local list
+        return merged
+      }),
     }))
   }
 
@@ -474,11 +635,13 @@ function StepMapping({ orgId, batch, autoMatches, fieldDefs, onSaved }) {
             key={m.csvHeader}
             m={m}
             index={i}
+            orgId={orgId}
             fieldDefs={fieldDefs}
             onChange={handleChange}
             onAddExtra={handleAddExtra}
             onChangeExtra={handleChangeExtra}
             onRemoveExtra={handleRemoveExtra}
+            onFieldCreated={handleFieldCreated}
           />
         ))}
       </div>
@@ -491,7 +654,144 @@ function StepMapping({ orgId, batch, autoMatches, fieldDefs, onSaved }) {
 }
 
 // ---------------------------------------------------------------------------
-// Step 3 — Preview
+// Step 3 — Value Mapping
+// ---------------------------------------------------------------------------
+function StepValueMapping({ orgId, batchId, onSaved, onSkipped }) {
+  const toast      = useToast()
+  const saveAliases = useSaveAliases(orgId)
+  const { data: vm, isLoading } = useValueMapping(orgId, batchId)
+
+  // localMappings: { [fieldDefinitionId + '|' + aliasValue]: canonicalValue }
+  const [localMappings, setLocalMappings] = useState({})
+
+  if (isLoading) return <div className="d-flex align-items-center gap-2"><div className="spinner-border spinner-border-sm" /> Loading value mapping…</div>
+
+  // If there are no dropdown/multiselect columns at all, or no unresolved values, skip this step
+  if (!vm || vm.columns.length === 0) {
+    return (
+      <div>
+        <h2 className="h5 mb-2">Value Mapping</h2>
+        <p className="text-muted-sm mb-3">No dropdown or multiselect columns found — nothing to map.</p>
+        <button className="btn btn-primary" onClick={onSkipped}>Continue to Preview →</button>
+      </div>
+    )
+  }
+
+  if (!vm.hasUnresolved && vm.columns.every(c => c.unresolvedValues.length === 0)) {
+    return (
+      <div>
+        <h2 className="h5 mb-2">Value Mapping</h2>
+        <p className="text-muted-sm mb-3">All values in this file already match known options or saved aliases.</p>
+        <button className="btn btn-primary" onClick={onSkipped}>Continue to Preview →</button>
+      </div>
+    )
+  }
+
+  function setMapping(fieldDefinitionId, aliasValue, canonicalValue) {
+    const key = `${fieldDefinitionId}|${aliasValue}`
+    setLocalMappings(prev => ({ ...prev, [key]: canonicalValue }))
+  }
+
+  async function handleSave() {
+    const aliases = []
+    for (const col of vm.columns) {
+      for (const rawValue of col.unresolvedValues) {
+        const key = `${col.fieldDefinitionId}|${rawValue}`
+        const canonical = localMappings[key]
+        if (canonical) {
+          aliases.push({ fieldDefinitionId: col.fieldDefinitionId, aliasValue: rawValue, canonicalValue: canonical })
+        }
+      }
+    }
+    try {
+      if (aliases.length > 0) {
+        await saveAliases.mutateAsync(aliases)
+        toast(`${aliases.length} alias${aliases.length !== 1 ? 'es' : ''} saved.`)
+      }
+      onSaved()
+    } catch (err) {
+      toast(err.message ?? 'Failed to save aliases.', 'danger')
+    }
+  }
+
+  const totalUnresolved = vm.columns.reduce((n, c) => n + c.unresolvedValues.length, 0)
+  const totalMapped = Object.values(localMappings).filter(Boolean).length
+
+  return (
+    <div>
+      <h2 className="h5 mb-1">Map Values</h2>
+      <p className="text-muted-sm mb-3">
+        The file contains {totalUnresolved} value{totalUnresolved !== 1 ? 's' : ''} that don&apos;t match known options.
+        Map them to canonical values below. These mappings are saved for all future imports from this organisation.
+      </p>
+
+      {vm.columns.filter(c => c.unresolvedValues.length > 0).map(col => (
+        <div key={col.fieldDefinitionId} className="admin-card mb-3">
+          <div className="fw-semibold mb-1">{col.fieldLabel} <span className="text-muted fw-normal" style={{ fontSize: '.8rem' }}>({col.fieldType})</span></div>
+          <div className="text-muted-sm mb-2" style={{ fontSize: '.78rem' }}>
+            CSV column: <code>{col.csvHeader}</code> &nbsp;·&nbsp;
+            Known options: {col.knownOptions.join(', ') || '—'}
+          </div>
+
+          <table className="table table-sm mb-0" style={{ fontSize: '.82rem' }}>
+            <thead>
+              <tr>
+                <th style={{ width: '40%' }}>Value in file</th>
+                <th>Map to canonical option</th>
+              </tr>
+            </thead>
+            <tbody>
+              {col.unresolvedValues.map(raw => {
+                const key = `${col.fieldDefinitionId}|${raw}`
+                const selected = localMappings[key] ?? ''
+                return (
+                  <tr key={raw}>
+                    <td><code>{raw}</code></td>
+                    <td>
+                      <select
+                        className={`form-select form-select-sm ${selected ? '' : 'border-warning'}`}
+                        style={{ maxWidth: 260 }}
+                        value={selected}
+                        onChange={e => setMapping(col.fieldDefinitionId, raw, e.target.value)}
+                      >
+                        <option value="">— Leave unmapped —</option>
+                        {col.knownOptions.map(opt => (
+                          <option key={opt} value={opt}>{opt}</option>
+                        ))}
+                      </select>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+
+          {col.existingAliases.length > 0 && (
+            <div className="mt-2 text-muted-sm" style={{ fontSize: '.75rem' }}>
+              Already mapped: {col.existingAliases.map(a => `"${a.aliasValue}" → "${a.canonicalValue}"`).join(', ')}
+            </div>
+          )}
+        </div>
+      ))}
+
+      <div className="d-flex gap-2 align-items-center">
+        <button
+          className="btn btn-primary"
+          onClick={handleSave}
+          disabled={saveAliases.isPending}
+        >
+          {saveAliases.isPending ? 'Saving…' : `Save ${totalMapped > 0 ? totalMapped + ' mapping' + (totalMapped !== 1 ? 's' : '') + ' &' : ''} Continue →`}
+        </button>
+        <button className="btn btn-link text-muted p-0" style={{ fontSize: '.85rem' }} onClick={onSkipped}>
+          Skip — import without mapping
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Step 4 — Preview (was Step 3)
 // ---------------------------------------------------------------------------
 function StepPreview({ orgId, batchId, onConfirmed }) {
   const toast   = useToast()
@@ -547,7 +847,7 @@ function StepPreview({ orgId, batchId, onConfirmed }) {
                 <tr>
                   <th>Row</th>
                   <th>Status</th>
-                  {previewData.rows?.[0]?.values && Object.keys(previewData.rows[0].values).map(k => <th key={k}>{k}</th>)}
+                  {previewData.headers?.map((h, i) => <th key={i}>{h}</th>)}
                   <th>Issues</th>
                 </tr>
               </thead>
@@ -560,10 +860,10 @@ function StepPreview({ orgId, batchId, onConfirmed }) {
                         {row.status}
                       </span>
                     </td>
-                    {row.values && Object.values(row.values).map((v, i) => (
+                    {row.values?.map((v, i) => (
                       <td key={i} className="text-muted-sm">{v ?? '—'}</td>
                     ))}
-                    <td className="text-muted-sm">{row.errors?.join('; ') ?? ''}</td>
+                    <td className="text-muted-sm">{row.message ?? ''}</td>
                   </tr>
                 ))}
               </tbody>
@@ -596,7 +896,9 @@ function StepExecute({ orgId, batchId, onDone }) {
   const execute  = useExecuteImport(orgId)
   const [started, setStarted] = useState(false)
 
-  // Poll batch status while importing
+  // SignalR push — updates the React Query cache when the import finishes.
+  // Falls back to 30 s polling in case the WebSocket connection is lost.
+  useImportHub(orgId, batchId)
   const { data: batch } = useImportBatch(orgId, batchId)
 
   async function runExecute() {
@@ -664,37 +966,82 @@ function StepExecute({ orgId, batchId, onDone }) {
 // ---------------------------------------------------------------------------
 // Step 5 — Results
 // ---------------------------------------------------------------------------
-function StepResults({ orgId, batchId }) {
-  const { data: batch } = useImportBatch(orgId, batchId)
-  const [errors, setErrors] = useState(null)
-  const [loadingErrors, setLoadingErrors] = useState(false)
+function RawDataCell({ rawData, headers }) {
+  const [expanded, setExpanded] = useState(false)
+  let values = null
+  try { values = JSON.parse(rawData) } catch { /* ignore */ }
 
-  async function loadErrors() {
-    setLoadingErrors(true)
-    try {
-      const data = await importApi.getErrors(orgId, batchId)
-      setErrors(data)
-    } finally {
-      setLoadingErrors(false)
-    }
+  if (!values || !Array.isArray(values)) {
+    return <span className="font-monospace" style={{ fontSize: '.72rem' }}>{rawData}</span>
   }
 
+  if (!expanded) {
+    return (
+      <button className="btn btn-link p-0 text-muted" style={{ fontSize: '.72rem' }} onClick={() => setExpanded(true)}>
+        View {values.length} values
+      </button>
+    )
+  }
+
+  return (
+    <div style={{ fontSize: '.72rem' }}>
+      <button className="btn btn-link p-0 text-muted mb-1" style={{ fontSize: '.72rem' }} onClick={() => setExpanded(false)}>
+        Hide ▲
+      </button>
+      <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+        <tbody>
+          {values.map((v, i) => (
+            <tr key={i} style={{ borderBottom: '1px solid #e5e7eb' }}>
+              <td style={{ padding: '1px 6px 1px 0', color: '#6b7280', whiteSpace: 'nowrap', fontWeight: 500 }}>
+                {headers?.[i] ?? `[${i}]`}
+              </td>
+              <td className="font-monospace" style={{ padding: '1px 0', wordBreak: 'break-all' }}>
+                {v ?? <em className="text-muted">—</em>}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+function StepResults({ orgId, batchId, onFixMappings, onFixAliases, onRetry }) {
+  const { data: batch } = useImportBatch(orgId, batchId)
+  const [allEntries, setAllEntries] = useState(null)
+  const [loadingEntries, setLoadingEntries] = useState(false)
+
+  useEffect(() => {
+    if (!batchId || !orgId) return
+    setLoadingEntries(true)
+    importApi.getErrors(orgId, batchId)
+      .then(data => setAllEntries(data))
+      .catch(() => setAllEntries([]))
+      .finally(() => setLoadingEntries(false))
+  }, [orgId, batchId])
+
   if (!batch) return <LoadingState />
+
+  const headers   = batch.fileHeaders ?? []
+  const warnings  = (allEntries ?? []).filter(e => e.errorType === 'warning')
+  const errors    = (allEntries ?? []).filter(e => e.errorType !== 'warning')
+  const hasIssues = (allEntries ?? []).length > 0
 
   return (
     <div>
       <div className="text-center mb-4">
-        <div style={{ fontSize: '3rem' }}>✅</div>
+        <div style={{ fontSize: '3rem' }}>{(batch.errorRows ?? 0) > 0 ? '⚠️' : '✅'}</div>
         <h2 className="h4 mt-2">Import Complete</h2>
         <p className="text-muted-sm">{batch.fileName}</p>
       </div>
 
+      {/* Stats */}
       <div className="row g-3 mb-4">
         {[
-          { label: 'Total Rows',  value: batch.totalRows,    color: '#dbeafe', text: '#1e40af' },
-          { label: 'Imported',    value: batch.importedRows, color: '#d1fae5', text: '#065f46' },
-          { label: 'Skipped',     value: batch.skippedRows,  color: '#fef3c7', text: '#92400e' },
-          { label: 'Errors',      value: batch.errorRows,    color: '#fee2e2', text: '#991b1b' },
+          { label: 'Total Rows', value: batch.totalRows,    color: '#dbeafe', text: '#1e40af' },
+          { label: 'Imported',   value: batch.importedRows, color: '#d1fae5', text: '#065f46' },
+          { label: 'Skipped',    value: batch.skippedRows,  color: '#fef3c7', text: '#92400e' },
+          { label: 'Errors',     value: batch.errorRows,    color: '#fee2e2', text: '#991b1b' },
         ].map(s => (
           <div key={s.label} className="col-6 col-md-3">
             <div className="p-3 rounded-3 text-center" style={{ background: s.color }}>
@@ -705,30 +1052,98 @@ function StepResults({ orgId, batchId }) {
         ))}
       </div>
 
-      {(batch.errorRows ?? 0) > 0 && (
-        <div className="mb-3">
-          <button className="btn btn-sm btn-outline-danger" onClick={loadErrors} disabled={loadingErrors}>
-            {loadingErrors ? 'Loading…' : 'View Error Rows'}
-          </button>
-          {errors && (
-            <div className="mt-2 admin-card p-0">
-              <div className="table-wrap">
-                <table className="data-table" style={{ fontSize: '.8rem' }}>
-                  <thead><tr><th>Row</th><th>Error Type</th><th>Message</th><th>Raw Data</th></tr></thead>
-                  <tbody>
-                    {errors.map(e => (
-                      <tr key={e.errorId}>
-                        <td>{e.rowNumber}</td>
-                        <td><span className="badge bg-danger">{e.errorType}</span></td>
-                        <td className="text-muted-sm">{e.errorMessage}</td>
-                        <td style={{ fontFamily: 'monospace', fontSize: '.75rem', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.rawData}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+      {/* Remediation actions */}
+      {hasIssues && (
+        <div className="admin-card mb-4" style={{ borderLeft: '4px solid #f59e0b' }}>
+          <div className="fw-semibold mb-2" style={{ fontSize: '.9rem' }}>Fix &amp; Retry Options</div>
+          <div className="d-flex gap-2 flex-wrap">
+            <button className="btn btn-sm btn-outline-primary" onClick={onFixMappings}>
+              🗂 Fix Column Mappings
+            </button>
+            <button className="btn btn-sm btn-outline-secondary" onClick={onFixAliases}>
+              🔤 Fix Value Aliases
+            </button>
+            <button className="btn btn-sm btn-outline-warning" onClick={onRetry}>
+              🔁 Retry Failed Rows
+            </button>
+          </div>
+          <div className="text-muted mt-2" style={{ fontSize: '.75rem' }}>
+            <strong>Fix Column Mappings</strong> — Go back to step 1 and remap columns, then re-run.
+            &nbsp;·&nbsp;
+            <strong>Fix Value Aliases</strong> — Add aliases for unrecognised values, then re-run.
+            &nbsp;·&nbsp;
+            <strong>Retry</strong> — Re-execute the import without any changes.
+          </div>
+        </div>
+      )}
+
+      {/* Warnings — rows imported but with incomplete data */}
+      {loadingEntries && (
+        <div className="d-flex align-items-center gap-2 mb-3 text-muted" style={{ fontSize: '.85rem' }}>
+          <div className="spinner-border spinner-border-sm" /> Loading error details…
+        </div>
+      )}
+
+      {warnings.length > 0 && (
+        <div className="mb-4">
+          <div className="fw-semibold mb-2" style={{ fontSize: '.85rem', color: '#92400e' }}>
+            ⚠️ {warnings.length} row{warnings.length !== 1 ? 's' : ''} imported with incomplete data
+          </div>
+          <p className="text-muted-sm mb-2" style={{ fontSize: '.8rem' }}>
+            These customers were imported, but some data (e.g., address) was skipped due to missing required fields.
+          </p>
+          <div className="admin-card p-0">
+            <div className="table-wrap">
+              <table className="data-table" style={{ fontSize: '.8rem' }}>
+                <thead><tr><th style={{ width: 60 }}>Row</th><th>Issue</th><th>Raw Data</th></tr></thead>
+                <tbody>
+                  {warnings.map(w => (
+                    <tr key={w.errorId}>
+                      <td>{w.rowNumber}</td>
+                      <td className="text-muted-sm">{w.errorMessage}</td>
+                      <td><RawDataCell rawData={w.rawData} headers={headers} /></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-          )}
+          </div>
+        </div>
+      )}
+
+      {/* Errors — rows that failed to import */}
+      {errors.length > 0 && (
+        <div className="mb-4">
+          <div className="fw-semibold mb-2" style={{ fontSize: '.85rem', color: '#991b1b' }}>
+            ❌ {errors.length} row{errors.length !== 1 ? 's' : ''} failed to import
+          </div>
+          <div className="admin-card p-0">
+            <div className="table-wrap">
+              <table className="data-table" style={{ fontSize: '.8rem' }}>
+                <thead><tr><th style={{ width: 60 }}>Row</th><th style={{ width: 100 }}>Error Type</th><th>Message</th><th>Raw Data</th></tr></thead>
+                <tbody>
+                  {errors.map(e => (
+                    <tr key={e.errorId}>
+                      <td>{e.rowNumber}</td>
+                      <td>
+                        <span className={`badge ${e.errorType === 'duplicate' ? 'bg-warning text-dark' : 'bg-danger'}`}>
+                          {e.errorType}
+                        </span>
+                      </td>
+                      <td className="text-muted-sm">{e.errorMessage}</td>
+                      <td><RawDataCell rawData={e.rawData} headers={headers} /></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {!loadingEntries && allEntries !== null && allEntries.length === 0 && (batch.errorRows ?? 0) === 0 && (
+        <div className="alert alert-success mb-4" style={{ fontSize: '.875rem' }}>
+          All rows imported successfully with no issues.
         </div>
       )}
 
@@ -743,39 +1158,136 @@ function StepResults({ orgId, batchId }) {
 // ---------------------------------------------------------------------------
 // Import history list
 // ---------------------------------------------------------------------------
-function ImportHistory({ orgId }) {
+function ImportHistory({ orgId, onResume, onReview }) {
+  const toast = useToast()
   const { data: paged, isLoading } = useImportBatches(orgId)
+  const cancel  = useCancelImport(orgId)
+  const destroy = useDeleteImport(orgId)
+  const resume  = useResumeImport(orgId)
   const batches = paged?.items ?? paged ?? []
+
+  const [confirm, setConfirm] = useState(null) // { action: 'cancel'|'delete', batchId }
+
+  async function handleResume(b) {
+    try {
+      const result = await resume.mutateAsync(b.batchId)
+      onResume(result)
+    } catch (err) {
+      toast(err.message ?? 'Could not resume import.', 'danger')
+    }
+  }
+
+  async function handleConfirmed() {
+    const { action, batchId } = confirm
+    setConfirm(null)
+    try {
+      if (action === 'cancel') await cancel.mutateAsync(batchId)
+      else                     await destroy.mutateAsync(batchId)
+      toast(action === 'cancel' ? 'Import cancelled.' : 'Import deleted.')
+    } catch (err) {
+      toast(err.message ?? `Could not ${action} import.`, 'danger')
+    }
+  }
 
   if (isLoading) return <LoadingState message="Loading history…" />
 
+  const canResume  = s => s === 'pending' || s === 'preview' || s === 'failed' || s === 'importing'
+  const canCancel  = s => s === 'pending' || s === 'preview' || s === 'failed' || s === 'importing'
+  const canReview  = b => b.status === 'completed'
+  const canDelete  = () => true
+
   return (
-    <div className="admin-card p-0 mt-4">
-      <div className="px-4 pt-3 pb-2 border-bottom" style={{ fontWeight: 600, fontSize: '.9rem' }}>Import History</div>
-      {!batches.length ? (
-        <EmptyState icon="📋" title="No imports yet" description="Complete your first import above." />
-      ) : (
-        <div className="table-wrap">
-          <table className="data-table">
-            <thead>
-              <tr><th>File</th><th>Status</th><th>Rows</th><th>Imported</th><th>Errors</th><th>Uploaded</th></tr>
-            </thead>
-            <tbody>
-              {batches.slice(0, 10).map(b => (
-                <tr key={b.batchId}>
-                  <td className="fw-semibold text-muted-sm" style={{ maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{b.fileName}</td>
-                  <td><ImportStatusBadge status={b.status} /></td>
-                  <td className="text-muted-sm">{b.totalRows ?? '—'}</td>
-                  <td className="text-muted-sm">{b.importedRows ?? '—'}</td>
-                  <td className="text-muted-sm">{b.errorRows ?? '—'}</td>
-                  <td className="text-muted-sm">{fmtDate(b.uploadedAt)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+    <>
+      {confirm && (
+        <div className="modal d-block" style={{ background: 'rgba(0,0,0,.4)' }}>
+          <div className="modal-dialog modal-sm modal-dialog-centered">
+            <div className="modal-content">
+              <div className="modal-body text-center py-4">
+                <p className="mb-3 fw-semibold">
+                  {confirm.action === 'delete'
+                    ? 'Permanently delete this import batch?'
+                    : 'Cancel this import batch?'}
+                </p>
+                <div className="d-flex gap-2 justify-content-center">
+                  <button className={`btn btn-sm btn-${confirm.action === 'delete' ? 'danger' : 'warning'}`} onClick={handleConfirmed}>
+                    Yes, {confirm.action}
+                  </button>
+                  <button className="btn btn-sm btn-outline-secondary" onClick={() => setConfirm(null)}>No, keep it</button>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       )}
-    </div>
+
+      <div className="admin-card p-0 mt-4">
+        <div className="px-4 pt-3 pb-2 border-bottom" style={{ fontWeight: 600, fontSize: '.9rem' }}>Import History</div>
+        {!batches.length ? (
+          <EmptyState icon="📋" title="No imports yet" description="Complete your first import above." />
+        ) : (
+          <div className="table-wrap">
+            <table className="data-table">
+              <thead>
+                <tr><th>File</th><th>Status</th><th>Rows</th><th>Imported</th><th>Errors</th><th>Uploaded</th><th></th></tr>
+              </thead>
+              <tbody>
+                {batches.slice(0, 10).map(b => (
+                  <tr key={b.batchId}>
+                    <td className="fw-semibold text-muted-sm" style={{ maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{b.fileName}</td>
+                    <td><ImportStatusBadge status={b.status} /></td>
+                    <td className="text-muted-sm">{b.totalRows ?? '—'}</td>
+                    <td className="text-muted-sm">{b.importedRows ?? '—'}</td>
+                    <td className="text-muted-sm">{b.errorRows > 0 ? <span className="text-danger fw-semibold">{b.errorRows}</span> : (b.errorRows ?? '—')}</td>
+                    <td className="text-muted-sm">{fmtDate(b.uploadedAt)}</td>
+                    <td>
+                      <div className="d-flex gap-1 justify-content-end">
+                        {canReview(b) && (
+                          <button
+                            className="btn btn-xs btn-outline-info"
+                            style={{ fontSize: '.7rem', padding: '2px 8px' }}
+                            onClick={() => onReview(b)}
+                          >
+                            Review
+                          </button>
+                        )}
+                        {canResume(b.status) && (
+                          <button
+                            className="btn btn-xs btn-outline-primary"
+                            style={{ fontSize: '.7rem', padding: '2px 8px' }}
+                            disabled={resume.isPending}
+                            onClick={() => handleResume(b)}
+                          >
+                            Resume
+                          </button>
+                        )}
+                        {canCancel(b.status) && (
+                          <button
+                            className="btn btn-xs btn-outline-warning"
+                            style={{ fontSize: '.7rem', padding: '2px 8px' }}
+                            onClick={() => setConfirm({ action: 'cancel', batchId: b.batchId })}
+                          >
+                            Cancel
+                          </button>
+                        )}
+                        {canDelete(b.status) && (
+                          <button
+                            className="btn btn-xs btn-outline-danger"
+                            style={{ fontSize: '.7rem', padding: '2px 8px' }}
+                            onClick={() => setConfirm({ action: 'delete', batchId: b.batchId })}
+                          >
+                            Delete
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </>
   )
 }
 
@@ -784,32 +1296,80 @@ function ImportHistory({ orgId }) {
 // ---------------------------------------------------------------------------
 export default function ImportPage() {
   const { organizationId } = useParams()
+  const toast              = useToast()
   const { data: org }      = useOrganization(organizationId)
   const { data: fieldDefsPage } = useFields(organizationId)
   const fieldDefs = fieldDefsPage?.items ?? fieldDefsPage ?? []
-  const [step, setStep]         = useState(0)
+  const [step, setStep]               = useState(0)
   const [uploadResult, setUploadResult] = useState(null)
+  const resetImport = useResetImport(organizationId)
+  const resume      = useResumeImport(organizationId)
 
   function handleUploaded(result) {
     setUploadResult(result)
     setStep(1)
   }
 
-  function handleMappingsSaved() {
-    setStep(2)
+  // Resume from import history: result has same shape as upload response
+  function handleResume(result) {
+    setUploadResult(result)
+    setStep(1)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
-  function handlePreviewConfirmed() {
-    setStep(3)
+  // Review a completed batch from history — jump straight to results step
+  function handleReview(batch) {
+    setUploadResult({ batchId: batch.batchId, fileName: batch.fileName })
+    setStep(5)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
-  function handleExecuteDone() {
-    setStep(4)
-  }
+  function handleMappingsSaved() { setStep(2) }
+  function handleValueMappingDone() { setStep(3) }
+  function handlePreviewConfirmed() { setStep(4) }
+  function handleExecuteDone() { setStep(5) }
 
   function reset() {
     setStep(0)
     setUploadResult(null)
+  }
+
+  // Reset to pending then resume into step 1 (Map Columns)
+  async function handleFixMappings() {
+    if (!uploadResult) return
+    try {
+      await resetImport.mutateAsync({ batchId: uploadResult.batchId, targetStatus: 'pending' })
+      const resumed = await resume.mutateAsync(uploadResult.batchId)
+      setUploadResult(resumed)
+      setStep(1)
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+    } catch (err) {
+      toast(err.message ?? 'Could not reset batch.', 'danger')
+    }
+  }
+
+  // Reset to preview then navigate to step 2 (Value Aliases)
+  async function handleFixAliases() {
+    if (!uploadResult) return
+    try {
+      await resetImport.mutateAsync({ batchId: uploadResult.batchId, targetStatus: 'preview' })
+      setStep(2)
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+    } catch (err) {
+      toast(err.message ?? 'Could not reset batch.', 'danger')
+    }
+  }
+
+  // Reset to preview then navigate to step 4 (Execute) for retry
+  async function handleRetry() {
+    if (!uploadResult) return
+    try {
+      await resetImport.mutateAsync({ batchId: uploadResult.batchId, targetStatus: 'preview' })
+      setStep(4)
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+    } catch (err) {
+      toast(err.message ?? 'Could not reset batch.', 'danger')
+    }
   }
 
   return (
@@ -845,31 +1405,50 @@ export default function ImportPage() {
           />
         )}
         {step === 2 && uploadResult && (
+          <StepValueMapping
+            orgId={organizationId}
+            batchId={uploadResult.batchId}
+            onSaved={handleValueMappingDone}
+            onSkipped={handleValueMappingDone}
+          />
+        )}
+        {step === 3 && uploadResult && (
           <StepPreview
             orgId={organizationId}
             batchId={uploadResult.batchId}
             onConfirmed={handlePreviewConfirmed}
           />
         )}
-        {step === 3 && uploadResult && (
+        {step === 4 && uploadResult && (
           <StepExecute
             orgId={organizationId}
             batchId={uploadResult.batchId}
             onDone={handleExecuteDone}
           />
         )}
-        {step === 4 && uploadResult && (
-          <StepResults orgId={organizationId} batchId={uploadResult.batchId} />
+        {step === 5 && uploadResult && (
+          <StepResults
+            orgId={organizationId}
+            batchId={uploadResult.batchId}
+            onFixMappings={handleFixMappings}
+            onFixAliases={handleFixAliases}
+            onRetry={handleRetry}
+          />
         )}
 
-        {step > 0 && step < 4 && (
+        {step > 0 && step < 5 && (
           <div className="mt-3 pt-3 border-top">
             <button className="btn btn-sm btn-link text-muted p-0" onClick={reset}>← Start over with a new file</button>
           </div>
         )}
+        {step === 5 && (
+          <div className="mt-3 pt-3 border-top">
+            <button className="btn btn-sm btn-link text-muted p-0" onClick={reset}>← Start a new import</button>
+          </div>
+        )}
       </div>
 
-      {step === 0 && <ImportHistory orgId={organizationId} />}
+      {step === 0 && <ImportHistory orgId={organizationId} onResume={handleResume} onReview={handleReview} />}
     </div>
   )
 }

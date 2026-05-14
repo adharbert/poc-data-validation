@@ -15,6 +15,7 @@ public class MarketingProjectRepository(IDbConnectionFactory db) : IMarketingPro
                 ,   OrganizationId
                 ,   ContractId
                 ,   ProjectName
+                ,   ProjectType
                 ,   MarketingStartDate
                 ,   MarketingEndDate
                 ,   IsActive
@@ -39,6 +40,7 @@ public class MarketingProjectRepository(IDbConnectionFactory db) : IMarketingPro
                 ,   OrganizationId
                 ,   ContractId
                 ,   ProjectName
+                ,   ProjectType
                 ,   MarketingStartDate
                 ,   MarketingEndDate
                 ,   IsActive
@@ -60,10 +62,10 @@ public class MarketingProjectRepository(IDbConnectionFactory db) : IMarketingPro
 
         const string sql = """
             INSERT INTO MarketingProjects
-                (OrganizationId, ContractId, ProjectName, MarketingStartDate, MarketingEndDate, IsActive, Notes, CreatedDt, CreatedBy)
+                (OrganizationId, ContractId, ProjectName, ProjectType, MarketingStartDate, MarketingEndDate, IsActive, Notes, CreatedDt, CreatedBy)
             OUTPUT INSERTED.Id
             VALUES
-                (@OrganizationId, @ContractId, @ProjectName, @MarketingStartDate, @MarketingEndDate, @IsActive, @Notes, @CreatedDt, @CreatedBy)
+                (@OrganizationId, @ContractId, @ProjectName, @ProjectType, @MarketingStartDate, @MarketingEndDate, @IsActive, @Notes, @CreatedDt, @CreatedBy)
             """;
         using var conn = _db.CreateConnection();
         project.ProjectId = await conn.ExecuteScalarAsync<int>(sql, project);
@@ -78,6 +80,7 @@ public class MarketingProjectRepository(IDbConnectionFactory db) : IMarketingPro
             UPDATE  MarketingProjects
             SET     ContractId          = @ContractId
                 ,   ProjectName         = @ProjectName
+                ,   ProjectType         = @ProjectType
                 ,   MarketingStartDate  = @MarketingStartDate
                 ,   MarketingEndDate    = @MarketingEndDate
                 ,   IsActive            = @IsActive

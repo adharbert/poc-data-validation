@@ -26,7 +26,7 @@ import {
   StatusBadge, ConfirmModal, EmptyState, useToast,
 } from '@/components/common/index.jsx'
 
-const FIELD_TYPES = ['text', 'number', 'date', 'dropdown', 'multiselect', 'boolean', 'phone']
+const FIELD_TYPES = ['text', 'number', 'date', 'dropdown', 'multiselect', 'checkbox', 'phone']
 
 const PHONE_FORMATS = ['(XXX) XXX-XXXX', 'XXX-XXX-XXXX', 'XXX.XXX.XXXX']
 
@@ -194,11 +194,16 @@ function FieldModal({ organizationId, field, sections, fields, onClose }) {
                 <div className="col-6">
                   <label className="form-label fw-semibold">Field Key <span className="text-danger">*</span></label>
                   <input
-                    className={`form-control ${errors.fieldKey ? 'is-invalid' : ''}`}
+                    className={`form-control font-monospace ${errors.fieldKey ? 'is-invalid' : ''}`}
                     {...register('fieldKey', { required: 'Required' })}
+                    onChange={e => {
+                      const normalized = e.target.value.toLowerCase().replace(/\s+/g, '_')
+                      setValue('fieldKey', normalized, { shouldValidate: true })
+                    }}
                     disabled={isEdit}
                   />
                   {isEdit && <div className="form-text text-muted">Key cannot be changed after creation.</div>}
+                  {!isEdit && <div className="form-text text-muted">Lowercase letters, numbers, and underscores only.</div>}
                   {errors.fieldKey && <div className="invalid-feedback">{errors.fieldKey.message}</div>}
                 </div>
                 <div className="col-6">
@@ -286,13 +291,26 @@ function FieldModal({ organizationId, field, sections, fields, onClose }) {
 }
 
 // ─── Field options modal ─────────────────────────────────────────────────────
-function FieldOptionsModal({ fieldId, fieldLabel, onClose }) {
-  const toast    = useToast()
-  const { data: options, isLoading } = useFieldOptions(fieldId)
-  const save     = useSaveFieldOptions(fieldId)
-  const fileRef  = useRef()
+function FieldOptionsModal({ organizationId, field, allFields, onClose }) {
+  const toast  = useToast()
+  const update = useUpdateField(organizationId)
+  const fileRef = useRef()
+
+  const [localSourceId, setLocalSourceId] = useState(field.optionsSourceFieldId ?? '')
   const [items, setItems] = useState(null)
+
+  const sourceChanged = localSourceId !== (field.optionsSourceFieldId ?? '')
+  const isInherited   = !!localSourceId
+  const effectiveId   = localSourceId || field.fieldDefinitionId
+
+  const { data: options, isLoading } = useFieldOptions(organizationId, effectiveId)
+  const save = useSaveFieldOptions(organizationId, field.fieldDefinitionId)
+
   const opts = items ?? (options ?? [])
+
+  const sourceFields = (allFields ?? []).filter(
+    f => (f.fieldType === 'dropdown' || f.fieldType === 'multiselect') && f.fieldDefinitionId !== field.fieldDefinitionId
+  )
 
   function addItem() {
     setItems([...opts, { optionKey: '', optionLabel: '', displayOrder: opts.length + 1, isActive: true }])
@@ -317,7 +335,37 @@ function FieldOptionsModal({ fieldId, fieldLabel, onClose }) {
     e.target.value = ''
   }
 
-  async function handleSave() {
+  async function handleSaveSource() {
+    try {
+      await update.mutateAsync({
+        fieldId: field.fieldDefinitionId,
+        data: {
+          fieldDefinitionId:    field.fieldDefinitionId,
+          sectionId:            field.sectionId,
+          fieldLabel:           field.fieldLabel,
+          fieldType:            field.fieldType,
+          placeholderText:      field.placeholderText,
+          helpText:             field.helpText,
+          isRequired:           field.isRequired,
+          isActive:             field.isActive,
+          displayOrder:         field.displayOrder,
+          minValue:             field.minValue,
+          maxValue:             field.maxValue,
+          minLength:            field.minLength,
+          maxLength:            field.maxLength,
+          regexPattern:         field.regexPattern,
+          displayFormat:        field.displayFormat,
+          optionsSourceFieldId: localSourceId || null,
+        },
+      })
+      toast(localSourceId ? 'Options source saved.' : 'Field set to use own options.')
+      onClose()
+    } catch (err) {
+      toast(err.message ?? 'Error saving source.', 'danger')
+    }
+  }
+
+  async function handleSaveOptions() {
     try {
       await save.mutateAsync(opts)
       toast('Options saved.')
@@ -332,13 +380,40 @@ function FieldOptionsModal({ fieldId, fieldLabel, onClose }) {
       <div className="modal-dialog modal-dialog-centered">
         <div className="modal-content">
           <div className="modal-header">
-            <h5 className="modal-title">Options — {fieldLabel}</h5>
+            <h5 className="modal-title">Options — {field.fieldLabel}</h5>
             <button type="button" className="btn-close" onClick={onClose} />
           </div>
           <div className="modal-body">
-            {isLoading ? <LoadingState /> : (
+            {/* Source selector */}
+            <div className="mb-3">
+              <label className="form-label fw-semibold">Inherit options from</label>
+              <select className="form-select form-select-sm" value={localSourceId}
+                onChange={e => { setLocalSourceId(e.target.value); setItems(null) }}>
+                <option value="">— Own options —</option>
+                {sourceFields.map(f => (
+                  <option key={f.fieldDefinitionId} value={f.fieldDefinitionId}>{f.fieldLabel}</option>
+                ))}
+              </select>
+              {isInherited && (
+                <div className="form-text">Options are shared from the selected field. Manage them on the source field.</div>
+              )}
+            </div>
+
+            <hr className="my-2" />
+
+            {isLoading ? <LoadingState /> : isInherited ? (
+              <div className="d-flex flex-column gap-1" style={{ maxHeight: 320, overflowY: 'auto' }}>
+                {opts.map((opt, i) => (
+                  <div key={i} className="d-flex gap-2 align-items-center px-1 py-1 rounded" style={{ background: '#f9fafb' }}>
+                    <code className="text-muted-sm" style={{ minWidth: 120 }}>{opt.optionKey}</code>
+                    <span style={{ fontSize: '.875rem' }}>{opt.optionLabel}</span>
+                  </div>
+                ))}
+                {!opts.length && <p className="text-muted-sm mb-0">No options on source field yet.</p>}
+              </div>
+            ) : (
               <>
-                <div style={{ maxHeight: 320, overflowY: 'auto' }}>
+                <div style={{ maxHeight: 280, overflowY: 'auto' }}>
                   {opts.map((opt, i) => (
                     <div key={i} className="d-flex gap-2 mb-2 align-items-center">
                       <input className="form-control form-control-sm" placeholder="Key" value={opt.optionKey || ''}
@@ -355,18 +430,23 @@ function FieldOptionsModal({ fieldId, fieldLabel, onClose }) {
                     Upload CSV
                   </button>
                   <input ref={fileRef} type="file" className="d-none" accept=".csv,.txt,.tsv" onChange={handleFileUpload} />
-                  <span className="text-muted ms-1" style={{ fontSize: '.75rem' }}>
-                    CSV: key, label (replaces list)
-                  </span>
+                  <span className="text-muted ms-1" style={{ fontSize: '.75rem' }}>CSV: key, label</span>
                 </div>
               </>
             )}
           </div>
           <div className="modal-footer">
             <button className="btn btn-outline-secondary" onClick={onClose}>Cancel</button>
-            <button className="btn btn-primary" onClick={handleSave} disabled={save.isPending}>
-              {save.isPending ? 'Saving…' : `Save Options (${opts.length})`}
-            </button>
+            {sourceChanged && (
+              <button className="btn btn-primary" onClick={handleSaveSource} disabled={update.isPending}>
+                {update.isPending ? 'Saving…' : 'Save Source'}
+              </button>
+            )}
+            {!isInherited && !sourceChanged && (
+              <button className="btn btn-primary" onClick={handleSaveOptions} disabled={save.isPending}>
+                {save.isPending ? 'Saving…' : `Save Options (${opts.length})`}
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -898,8 +978,9 @@ export default function InputsPage() {
 
       {optionsField && (
         <FieldOptionsModal
-          fieldId={optionsField.fieldDefinitionId}
-          fieldLabel={optionsField.fieldLabel}
+          organizationId={organizationId}
+          field={optionsField}
+          allFields={fields}
           onClose={() => setOptionsField(null)}
         />
       )}

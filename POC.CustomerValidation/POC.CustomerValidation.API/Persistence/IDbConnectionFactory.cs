@@ -9,8 +9,11 @@ public interface IDbConnectionFactory
     IDbConnection CreateConnection();
 }
 
+// Marker interface — always resolves to the central (non-tenant) database.
+// Use this in repositories that read/write global data (e.g. LibraryRepository, DashboardRepository).
+public interface ICentralDbConnectionFactory : IDbConnectionFactory { }
 
-public class SqlConnectionFactory : IDbConnectionFactory
+public class SqlConnectionFactory : IDbConnectionFactory, ICentralDbConnectionFactory
 {
     private readonly string _connectionString;
 

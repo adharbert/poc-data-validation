@@ -9,6 +9,7 @@ public class MarketingProject
     public DateOnly     MarketingStartDate  { get; set; }
     public DateOnly?    MarketingEndDate    { get; set; }
     public bool         IsActive            { get; set; } = true;
+    public string?      ProjectType         { get; set; }
     public string?      Notes               { get; set; }
     public DateTime     CreatedDt           { get; set; }
     public string       CreatedBy           { get; set; } = default!;

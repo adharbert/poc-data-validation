@@ -4,10 +4,10 @@ using POC.CustomerValidation.API.Models.Entites;
 
 namespace POC.CustomerValidation.API.Persistence.Repositories;
 
-public class LibraryRepository(IDbConnectionFactory db, ILogger<LibraryRepository> logger) : ILibraryRepository
+public class LibraryRepository(ICentralDbConnectionFactory db, ILogger<LibraryRepository> logger) : ILibraryRepository
 {
-    private readonly IDbConnectionFactory _db     = db;
-    private readonly ILogger<LibraryRepository> _logger = logger;
+    private readonly ICentralDbConnectionFactory _db     = db;
+    private readonly ILogger<LibraryRepository>  _logger = logger;
 
     // -------------------------------------------------------
     // Sections

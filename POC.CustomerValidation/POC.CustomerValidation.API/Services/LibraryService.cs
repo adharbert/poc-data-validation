@@ -199,9 +199,7 @@ public class LibraryService(
 
             foreach (var (libField, libOptions) in fieldEntries)
             {
-                // Append a short unique suffix so re-importing the same section doesn't collide on FieldKey
-                var suffix   = Guid.NewGuid().ToString("N")[..6];
-                var fieldKey = $"{libField.FieldKey}_{suffix}";
+                var fieldKey = await ResolveUniqueFieldKeyAsync(request.OrganizationId, libField.FieldKey);
 
                 var newField = new FieldDefinition
                 {
@@ -253,6 +251,14 @@ public class LibraryService(
     // -------------------------------------------------------
     // Mapping helpers
     // -------------------------------------------------------
+
+    private async Task<string> ResolveUniqueFieldKeyAsync(Guid organizationId, string baseKey)
+    {
+        var existing = await _fieldRepo.GetByKeyAsync(organizationId, baseKey);
+        if (existing is null) return baseKey;
+        var suffix = Guid.NewGuid().ToString("N")[..6];
+        return $"{baseKey}_{suffix}";
+    }
 
     private async Task<LibrarySectionDto> MapSectionAsync(LibrarySection section)
     {

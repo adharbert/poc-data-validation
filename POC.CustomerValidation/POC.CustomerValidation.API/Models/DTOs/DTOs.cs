@@ -148,14 +148,15 @@ public record FieldDefinitionDto(
     string?     HelpText,
     bool        IsRequired,
     bool        IsActive,
-    int         DisplayOrder, 
+    int         DisplayOrder,
     decimal?    MinValue,
     decimal?    MaxValue,
     int?        MinLength,
     int?        MaxLength,
     string?     RegexPattern,
     string?     DisplayFormat,
-    IEnumerable<FieldOptionDto> Options
+    IEnumerable<FieldOptionDto> Options,
+    Guid?       OptionsSourceFieldId = null
 );
 
 
@@ -168,14 +169,15 @@ public record CreateFieldDefinitionRequest(
     string      FieldType,
     string?     PlaceholderText,
     string?     HelpText,
-    bool        IsRequired      = false,
-    int         DisplayOrder    = 0,
-    decimal?    MinValue        = null,
-    decimal?    MaxValue        = null,
-    int?        MinLength       = null,
-    int?        MaxLength       = null,
-    string?     RegexPattern    = null,
-    string?     DisplayFormat   = null
+    bool        IsRequired              = false,
+    int         DisplayOrder            = 0,
+    decimal?    MinValue                = null,
+    decimal?    MaxValue                = null,
+    int?        MinLength               = null,
+    int?        MaxLength               = null,
+    string?     RegexPattern            = null,
+    string?     DisplayFormat           = null,
+    Guid?       OptionsSourceFieldId    = null
 );
 
 
@@ -194,7 +196,8 @@ public record UpdateFieldDefinitionRequest(
     int?        MinLength,
     int?        MaxLength,
     string?     RegexPattern,
-    string?     DisplayFormat
+    string?     DisplayFormat,
+    Guid?       OptionsSourceFieldId = null
 );
 
 
@@ -391,6 +394,7 @@ public record MarketingProjectDto
     public Guid         OrganizationId      { get; init; }
     public string       OrganizationName    { get; init; } = default!;
     public Guid?        ContractId          { get; init; }
+    public string?      ProjectType         { get; init; }
     public string       ProjectName         { get; init; } = default!;
     public DateOnly     MarketingStartDate  { get; init; }
     public DateOnly?    MarketingEndDate    { get; init; }
@@ -406,6 +410,7 @@ public record CreateMarketingProjectRequest
 {
     public Guid?        ContractId          { get; init; }
     public string       ProjectName         { get; init; } = default!;
+    public string?      ProjectType         { get; init; }
     public DateOnly     MarketingStartDate  { get; init; }
     public DateOnly?    MarketingEndDate    { get; init; }
     public string?      Notes               { get; init; }
@@ -416,6 +421,7 @@ public record UpdateMarketingProjectRequest
 {
     public Guid?        ContractId          { get; init; }
     public string       ProjectName         { get; init; } = default!;
+    public string?      ProjectType         { get; init; }
     public DateOnly     MarketingStartDate  { get; init; }
     public DateOnly?    MarketingEndDate    { get; init; }
     public bool         IsActive            { get; init; }
@@ -468,6 +474,7 @@ public record ImportBatchDto
     public Guid         OrganizationId      { get; init; }
     public string       FileName            { get; init; } = default!;
     public string?      FileType            { get; init; }
+    public string[]     FileHeaders         { get; init; } = [];
     public int          TotalRows           { get; init; }
     public int          ImportedRows        { get; init; }
     public int          SkippedRows         { get; init; }
@@ -483,6 +490,7 @@ public record ImportBatchDto
 public record UploadImportResponseDto
 {
     public Guid                              BatchId              { get; init; }
+    public string                            FileName             { get; init; } = default!;
     public string[]                          Headers              { get; init; } = [];
     public int                               RowCount             { get; init; }
     public bool                              HasSavedMappings     { get; init; }
@@ -526,7 +534,7 @@ public record SaveMappingsRequest
 
 public record ColumnMappingDto
 {
-    public int      ColumnIndex         { get; init; }
+    public int      CsvColumnIndex      { get; init; }
     public string   CsvHeader           { get; init; } = default!;
     public string   DestinationTable    { get; init; } = "skip";
     public string?  DestinationField    { get; init; }
@@ -903,6 +911,54 @@ public record UploadContractDocumentRequest
 {
     public Guid?  AmendmentId { get; init; }
     public string UploadedBy  { get; init; } = "System";
+}
+
+// -------------------------------------------------------
+// FieldOptionAlias DTOs
+// -------------------------------------------------------
+
+public record FieldOptionAliasDto
+{
+    public Guid     Id                  { get; init; }
+    public Guid     OrganizationId      { get; init; }
+    public Guid     FieldDefinitionId   { get; init; }
+    public string   AliasValue          { get; init; } = default!;
+    public string   CanonicalValue      { get; init; } = default!;
+    public DateTime CreatedDt           { get; init; }
+}
+
+public record SaveAliasDto
+{
+    public Guid     FieldDefinitionId   { get; init; }
+    public string   AliasValue          { get; init; } = default!;
+    public string   CanonicalValue      { get; init; } = default!;
+}
+
+public record BulkSaveAliasesRequest
+{
+    public List<SaveAliasDto> Aliases { get; init; } = [];
+}
+
+// -------------------------------------------------------
+// Import Value Mapping DTOs
+// -------------------------------------------------------
+
+public record ValueMappingColumnDto
+{
+    public string               CsvHeader           { get; init; } = default!;
+    public int                  CsvColumnIndex      { get; init; }
+    public Guid                 FieldDefinitionId   { get; init; }
+    public string               FieldLabel          { get; init; } = default!;
+    public string               FieldType           { get; init; } = default!;
+    public List<string>         KnownOptions        { get; init; } = [];
+    public List<FieldOptionAliasDto> ExistingAliases { get; init; } = [];
+    public List<string>         UnresolvedValues    { get; init; } = [];
+}
+
+public record ValueMappingResponseDto
+{
+    public bool                         HasUnresolved   { get; init; }
+    public List<ValueMappingColumnDto>  Columns         { get; init; } = [];
 }
 
 // -------------------------------------------------------

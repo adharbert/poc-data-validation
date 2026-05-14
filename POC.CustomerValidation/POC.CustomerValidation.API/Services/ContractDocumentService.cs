@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using POC.CustomerValidation.API.Interfaces;
 using POC.CustomerValidation.API.Models.DTOs;
 using POC.CustomerValidation.API.Models.Entites;
@@ -7,7 +8,8 @@ namespace POC.CustomerValidation.API.Services;
 public class ContractDocumentService(
     IContractDocumentRepository repo,
     IContractRepository contractRepo,
-    IConfiguration config,
+    IOrganizationRepository orgRepo,
+    IOrganizationStorageService storage,
     ILogger<ContractDocumentService> log) : IContractDocumentService
 {
     static readonly HashSet<string> AllowedContentTypes = new(StringComparer.OrdinalIgnoreCase)
@@ -18,6 +20,9 @@ public class ContractDocumentService(
         "image/jpeg",
         "image/png"
     };
+
+    // Virtual folder inside the org's blob container.
+    const string Feature = "Contracts";
 
     public async Task<IEnumerable<ContractDocumentDto>> GetByContractIdAsync(Guid contractId)
     {
@@ -40,27 +45,29 @@ public class ContractDocumentService(
             throw new ArgumentException(
                 $"File type '{file.ContentType}' is not allowed. Accepted types: PDF, Word, JPEG, PNG.");
 
-        var uploadRoot = config["ContractSettings:UploadPath"] ?? "uploads/contracts";
-        var contractDir = Path.Combine(uploadRoot, contractId.ToString());
-        Directory.CreateDirectory(contractDir);
+        var org = await orgRepo.GetByIdAsync(contract.OrganizationId)
+            ?? throw new KeyNotFoundException($"Organisation {contract.OrganizationId} not found.");
 
-        var extension   = Path.GetExtension(file.FileName);
-        var storedName  = $"{Guid.NewGuid()}{extension}";
-        var storagePath = Path.Combine(contractDir, storedName);
+        var containerName = storage.GetContainerName(org.OrganizationId, org.Abbreviation);
+        var abbrevSlug    = Slugify(org.Abbreviation);
+        var timestamp     = DateTime.UtcNow.ToString("yyyyMMddHHmmss");
+        // Stored name: {abbrev}_{timestamp}_{original} — guarantees no collision even if same file re-uploaded.
+        var blobName = $"{abbrevSlug}_{timestamp}_{SanitizeFileName(file.FileName)}";
 
-        await using (var fs = File.Create(storagePath))
-            await file.CopyToAsync(fs);
+        await using var stream = file.OpenReadStream();
+        var blobPath = await storage.UploadFileAsync(containerName, Feature, blobName, stream, file.ContentType);
 
-        log.LogInformation("Contract document uploaded: {OriginalFileName} → {StoragePath}", file.FileName, storagePath);
+        log.LogInformation("Contract document uploaded: {OriginalFileName} → {Container}/{BlobPath}",
+            file.FileName, containerName, blobPath);
 
         var document = new ContractDocument
         {
             DocumentId       = Guid.NewGuid(),
             ContractId       = contractId,
             AmendmentId      = request.AmendmentId,
-            OriginalFileName = file.FileName,
-            StoredFileName   = storedName,
-            StoragePath      = storagePath,
+            OriginalFileName = file.FileName,           // always the user-visible name
+            StoredFileName   = blobName,                // renamed blob file
+            StoragePath      = $"{containerName}/{blobPath}", // full reference: container + path
             ContentType      = file.ContentType,
             FileSizeBytes    = file.Length,
             UploadedAt       = DateTime.UtcNow,
@@ -76,13 +83,8 @@ public class ContractDocumentService(
         var doc = await repo.GetByIdAsync(documentId)
             ?? throw new KeyNotFoundException($"Document {documentId} not found.");
 
-        if (!File.Exists(doc.StoragePath))
-        {
-            log.LogError("Contract document file missing on disk: {StoragePath}", doc.StoragePath);
-            throw new FileNotFoundException("Document file is no longer available on the server.", doc.StoragePath);
-        }
-
-        var stream = File.OpenRead(doc.StoragePath);
+        var (containerName, blobPath) = SplitStoragePath(doc.StoragePath);
+        var stream = await storage.DownloadFileAsync(containerName, blobPath);
         return (stream, Map(doc));
     }
 
@@ -93,19 +95,41 @@ public class ContractDocumentService(
 
         await repo.DeleteAsync(documentId);
 
-        if (File.Exists(doc.StoragePath))
-        {
-            File.Delete(doc.StoragePath);
-            log.LogInformation("Contract document deleted from disk: {StoragePath}", doc.StoragePath);
-        }
+        var (containerName, blobPath) = SplitStoragePath(doc.StoragePath);
+        await storage.DeleteFileAsync(containerName, blobPath);
+        log.LogInformation("Contract document deleted: {StoragePath}", doc.StoragePath);
     }
+
+    // ── Helpers ──────────────────────────────────────────────────────────────
+
+    // StoragePath format: "{containerName}/{feature}/{blobName}"
+    // e.g. "org-adx/Contracts/adx_20250508143022_contract.pdf"
+    private static (string ContainerName, string BlobPath) SplitStoragePath(string storagePath)
+    {
+        var idx = storagePath.IndexOf('/');
+        if (idx < 0)
+            throw new InvalidOperationException($"Invalid storage path format: '{storagePath}'");
+        return (storagePath[..idx], storagePath[(idx + 1)..]);
+    }
+
+    // Short, lowercase slug from the org abbreviation — used as a filename prefix.
+    private static string Slugify(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return "org";
+        var slug = Regex.Replace(text.ToLower().Trim(), @"[^a-z0-9]+", "");
+        return slug.Length > 0 ? slug[..Math.Min(8, slug.Length)] : "org";
+    }
+
+    // Replace path separators and collapse whitespace so the blob name is URL-safe.
+    private static string SanitizeFileName(string name)
+        => Regex.Replace(name.Replace('/', '-').Replace('\\', '-'), @"\s+", "_");
 
     private static ContractDocumentDto Map(ContractDocument d) => new()
     {
         DocumentId       = d.DocumentId,
         ContractId       = d.ContractId,
         AmendmentId      = d.AmendmentId,
-        OriginalFileName = d.OriginalFileName,
+        OriginalFileName = d.OriginalFileName,  // user sees only this
         ContentType      = d.ContentType,
         FileSizeBytes    = d.FileSizeBytes,
         UploadedAt       = d.UploadedAt,
