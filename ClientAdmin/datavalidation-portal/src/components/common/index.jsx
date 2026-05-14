@@ -23,7 +23,7 @@ export function StatusBadge({ active }) {
 // ---------------------------------------------------------------------------
 const TYPE_CLASS = {
   text: 'badge-text', number: 'badge-number', date: 'badge-date',
-  dropdown: 'badge-dropdown', multiselect: 'badge-multiselect', boolean: 'badge-boolean',
+  dropdown: 'badge-dropdown', multiselect: 'badge-multiselect', checkbox: 'badge-boolean',
   phone: 'badge-phone',
 }
 export function FieldTypeBadge({ type }) {

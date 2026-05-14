@@ -52,6 +52,9 @@ public class ImportsController(IImportService importService, IImportStagingServi
         return CreatedAtAction(nameof(GetBatch), new { organisationId, batchId = result.BatchId }, result);
     }
 
+
+
+
     /// <summary>List import history for the organisation, paginated.</summary>
     [HttpGet("imports")]
     [EndpointSummary("Imports — history")]
@@ -65,6 +68,9 @@ public class ImportsController(IImportService importService, IImportStagingServi
         return Ok(result);
     }
 
+
+
+
     /// <summary>Get a single import batch by Id.</summary>
     [HttpGet("imports/{batchId:guid}")]
     [EndpointSummary("Imports — get batch")]
@@ -75,6 +81,9 @@ public class ImportsController(IImportService importService, IImportStagingServi
         var result = await _importService.GetBatchAsync(batchId);
         return result is null ? NotFound() : Ok(result);
     }
+
+
+
 
     /// <summary>
     /// Check for saved column mappings for a given header fingerprint.
@@ -88,6 +97,9 @@ public class ImportsController(IImportService importService, IImportStagingServi
         var result = await _importService.GetSavedMappingsAsync(organisationId, fingerprint);
         return Ok(result);
     }
+
+
+
 
     /// <summary>
     /// Save column mappings for a batch. Every column must be mapped or skipped.
@@ -104,6 +116,9 @@ public class ImportsController(IImportService importService, IImportStagingServi
         return NoContent();
     }
 
+
+
+
     /// <summary>
     /// Preview the first 10 data rows with the saved mapping applied.
     /// Returns per-row validation status (ok, warning, error) and summary counts.
@@ -119,6 +134,9 @@ public class ImportsController(IImportService importService, IImportStagingServi
         return Ok(result);
     }
 
+
+
+
     /// <summary>
     /// Execute the full import for a batch. Batch must be in 'preview' status.
     /// Returns 202 Accepted immediately. Poll GET /imports/{batchId} for completion status.
@@ -130,11 +148,31 @@ public class ImportsController(IImportService importService, IImportStagingServi
     [ProducesResponseType(typeof(ApiError), StatusCodes.Status409Conflict)]
     public async Task<IActionResult> Execute(Guid organisationId, Guid batchId)
     {
-        _log.LogInformation("Execute import batch {BatchId}", batchId);
-        // Run in background — fire and forget; client polls status
-        _ = Task.Run(() => _importService.ExecuteAsync(batchId));
+        _log.LogInformation("Enqueue import batch {BatchId}", batchId);
+        await _importService.EnqueueAsync(batchId);
         return Accepted();
     }
+
+
+
+
+    /// <summary>
+    /// Scans the uploaded file and returns dropdown/multiselect columns with values
+    /// that are not yet covered by known options or existing aliases.
+    /// Call after SaveMappings and before Preview to drive the value-mapping wizard step.
+    /// </summary>
+    [HttpGet("imports/{batchId:guid}/value-mapping")]
+    [EndpointSummary("Imports — get value mapping")]
+    [ProducesResponseType(typeof(ValueMappingResponseDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetValueMapping(Guid organisationId, Guid batchId)
+    {
+        var result = await _importService.GetValueMappingAsync(batchId);
+        return Ok(result);
+    }
+
+
+
 
     /// <summary>Get the error rows for a completed import batch.</summary>
     [HttpGet("imports/{batchId:guid}/errors")]
@@ -146,6 +184,107 @@ public class ImportsController(IImportService importService, IImportStagingServi
         var result = await _importService.GetErrorsAsync(batchId);
         return Ok(result);
     }
+
+
+
+
+    /// <summary>
+    /// Reconstruct the upload-response shape for a pending or preview batch so the mapping
+    /// wizard can be resumed. Returns the same DTO shape as the upload endpoint.
+    /// </summary>
+    [HttpPost("imports/{batchId:guid}/resume")]
+    [EndpointSummary("Imports — resume mapping wizard")]
+    [ProducesResponseType(typeof(UploadImportResponseDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> Resume(Guid organisationId, Guid batchId)
+    {
+        var batch = await _importService.GetBatchAsync(batchId);
+        if (batch is null) return NotFound();
+        if (batch.Status is "completed")
+            return Conflict(new ApiError("WRONG_STATUS", $"Batch in '{batch.Status}' status cannot be resumed for mapping."));
+
+        var result = await _importService.ResumeAsync(batchId);
+        return Ok(result);
+    }
+
+
+
+
+    /// <summary>
+    /// Cancel a pending or preview batch. Sets status to 'cancelled'.
+    /// Returns 409 if the batch is actively importing.
+    /// </summary>
+    [HttpPost("imports/{batchId:guid}/cancel")]
+    [EndpointSummary("Imports — cancel batch")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> Cancel(Guid organisationId, Guid batchId)
+    {
+        try
+        {
+            await _importService.CancelAsync(batchId);
+            return NoContent();
+        }
+        catch (KeyNotFoundException)   { return NotFound(); }
+        catch (InvalidOperationException ex) { return Conflict(new ApiError("WRONG_STATUS", ex.Message)); }
+    }
+
+
+
+
+    /// <summary>
+    /// Reset a completed, cancelled, or failed batch back to an earlier status for remediation.
+    /// targetStatus = 'pending' to go back to column mapping; 'preview' to re-execute only.
+    /// Clears all error rows and execution timestamps.
+    /// </summary>
+    [HttpPost("imports/{batchId:guid}/reset")]
+    [EndpointSummary("Imports — reset batch for remediation")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> ResetBatch(
+        Guid organisationId,
+        Guid batchId,
+        [FromQuery] string targetStatus = "pending")
+    {
+        try
+        {
+            await _importService.ResetBatchAsync(batchId, targetStatus);
+            return NoContent();
+        }
+        catch (ArgumentException ex)           { return BadRequest(new ApiError("BAD_REQUEST", ex.Message)); }
+        catch (KeyNotFoundException)           { return NotFound(); }
+        catch (InvalidOperationException ex)   { return Conflict(new ApiError("WRONG_STATUS", ex.Message)); }
+    }
+
+
+
+
+    /// <summary>
+    /// Permanently delete a batch and all its associated data.
+    /// Returns 409 if the batch is actively importing.
+    /// </summary>
+    [HttpDelete("imports/{batchId:guid}")]
+    [EndpointSummary("Imports — delete batch")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> DeleteBatch(Guid organisationId, Guid batchId)
+    {
+        try
+        {
+            await _importService.DeleteAsync(batchId);
+            return NoContent();
+        }
+        catch (KeyNotFoundException)   { return NotFound(); }
+        catch (InvalidOperationException ex) { return Conflict(new ApiError("WRONG_STATUS", ex.Message)); }
+    }
+
+
+
 
     // ---------------------------------------------------------------
     // Import Column Staging
@@ -164,6 +303,9 @@ public class ImportsController(IImportService importService, IImportStagingServi
         return Ok(result);
     }
 
+
+
+
     /// <summary>Get a single staging record.</summary>
     [HttpGet("import-staging/{stagingId:guid}")]
     [EndpointSummary("Import staging — get by Id")]
@@ -174,6 +316,8 @@ public class ImportsController(IImportService importService, IImportStagingServi
         var result = await _stagingService.GetByIdAsync(stagingId);
         return result is null ? NotFound() : Ok(result);
     }
+
+
 
     /// <summary>
     /// Resolve or skip a staged column. Once resolved, the mapping is applied automatically
@@ -190,6 +334,9 @@ public class ImportsController(IImportService importService, IImportStagingServi
         return Ok(result);
     }
 
+
+
+
     /// <summary>
     /// Delete a staging record. The header will reappear as 'unmatched' on the next
     /// upload containing it. Use with caution.
@@ -204,4 +351,7 @@ public class ImportsController(IImportService importService, IImportStagingServi
         await _stagingService.DeleteAsync(stagingId);
         return NoContent();
     }
+
+
+
 }

@@ -1,15 +1,22 @@
-import { useState } from 'react'
-import { useParams, Link } from 'react-router-dom'
+import { useState, useMemo, useCallback } from 'react'
+import { useParams, Link, useNavigate } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
+import { AgGridReact } from 'ag-grid-react'
+import { AllCommunityModule, ModuleRegistry } from 'ag-grid-community'
 import {
   useOrganization,
   useCustomers, useCreateCustomer, useUpdateCustomer, useSetCustomerStatus,
 } from '@/hooks/useApi.js'
 import {
   PageHeader, LoadingState, ErrorAlert,
-  StatusBadge, ConfirmModal, EmptyState, Pagination, useToast,
+  StatusBadge, ConfirmModal, EmptyState, useToast,
 } from '@/components/common/index.jsx'
 import { fmtPhone, formatPhoneInput } from '@/utils/dates.js'
+
+import 'ag-grid-community/styles/ag-grid.css'
+import 'ag-grid-community/styles/ag-theme-quartz.css'
+
+ModuleRegistry.registerModules([AllCommunityModule])
 
 function CustomerModal({ orgId, customer, onClose }) {
   const toast  = useToast()
@@ -106,15 +113,16 @@ function CustomerModal({ orgId, customer, onClose }) {
 
 export default function CustomersPage() {
   const { organizationId } = useParams()
-  const [page, setPage]            = useState(1)
-  const [showInactive, setShowInactive] = useState(false)
-  const [showCreate, setShowCreate] = useState(false)
-  const [editCustomer, setEditCustomer] = useState(null)
-  const [confirmId, setConfirmId]   = useState(null)
-  const [targetStatus, setTargetStatus] = useState(null)
+  const navigate = useNavigate()
+
+  const [showInactive, setShowInactive]   = useState(false)
+  const [showCreate, setShowCreate]       = useState(false)
+  const [editCustomer, setEditCustomer]   = useState(null)
+  const [confirmId, setConfirmId]         = useState(null)
+  const [targetStatus, setTargetStatus]   = useState(null)
 
   const { data: org } = useOrganization(organizationId)
-  const { data: paged, isLoading, isError } = useCustomers(organizationId, page, 50, showInactive)
+  const { data: paged, isLoading, isError } = useCustomers(organizationId, 1, 2000, showInactive)
   const setStatus = useSetCustomerStatus(organizationId)
   const toast     = useToast()
 
@@ -131,6 +139,54 @@ export default function CustomersPage() {
       setConfirmId(null)
     }
   }
+
+  const ActionsCellRenderer = useCallback(({ data: c }) => (
+    <div className="gap-actions h-100 align-items-center">
+      <button className="btn btn-sm btn-outline-secondary py-0"
+        onClick={e => { e.stopPropagation(); setEditCustomer(c) }}>Edit</button>
+      <button
+        className={`btn btn-sm py-0 ${c.isActive ? 'btn-outline-danger' : 'btn-outline-success'}`}
+        onClick={e => { e.stopPropagation(); setConfirmId(c.customerId); setTargetStatus(!c.isActive) }}
+      >
+        {c.isActive ? 'Deactivate' : 'Activate'}
+      </button>
+    </div>
+  ), [])
+
+  const colDefs = useMemo(() => [
+    {
+      field: 'lastName',
+      headerName: 'Name',
+      flex: 2,
+      minWidth: 160,
+      valueGetter: p => `${p.data.lastName}, ${p.data.firstName}${p.data.middleName ? ' ' + p.data.middleName : ''}`,
+      cellRenderer: p => (
+        <span className="fw-semibold">{p.data.firstName} {p.data.middleName ? p.data.middleName + ' ' : ''}{p.data.lastName}</span>
+      ),
+    },
+    { field: 'email',        headerName: 'Email',         flex: 2, minWidth: 160 },
+    { field: 'customerCode', headerName: 'Customer Code', flex: 1, minWidth: 130,
+      cellRenderer: p => <code className="text-muted-sm">{p.data.customerCode}</code> },
+    { field: 'originalId',   headerName: 'Client ID',     flex: 1, minWidth: 110,
+      cellRenderer: p => p.data.originalId ?? '—' },
+    { field: 'isActive',     headerName: 'Status',        flex: 0, width: 90,
+      cellRenderer: p => <StatusBadge active={p.data.isActive} /> },
+    {
+      headerName: '',
+      sortable: false,
+      filter: false,
+      flex: 0,
+      width: 160,
+      cellRenderer: ActionsCellRenderer,
+    },
+  ], [ActionsCellRenderer])
+
+  const defaultColDef = useMemo(() => ({
+    sortable: true,
+    filter: true,
+    resizable: true,
+    suppressMovable: true,
+  }), [])
 
   if (isLoading) return <LoadingState message="Loading customers…" />
   if (isError)   return <ErrorAlert message="Could not load customers." />
@@ -170,47 +226,21 @@ export default function CustomersPage() {
             }
           />
         ) : (
-          <>
-            <div className="table-wrap">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Name</th>
-                    <th>Email</th>
-                    <th>Customer Code</th>
-                    <th>Client ID</th>
-                    <th>Status</th>
-                    <th></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {customers.map(c => (
-                    <tr key={c.customerId}>
-                      <td className="fw-semibold">{c.firstName} {c.middleName ? c.middleName + ' ' : ''}{c.lastName}</td>
-                      <td className="text-muted-sm">{c.email ?? '—'}</td>
-                      <td><code className="text-muted-sm">{c.customerCode}</code></td>
-                      <td className="text-muted-sm">{c.originalId ?? '—'}</td>
-                      <td><StatusBadge active={c.isActive} /></td>
-                      <td>
-                        <div className="gap-actions justify-content-end">
-                          <button className="btn btn-sm btn-outline-secondary" onClick={() => setEditCustomer(c)}>Edit</button>
-                          <button
-                            className={`btn btn-sm ${c.isActive ? 'btn-outline-danger' : 'btn-outline-success'}`}
-                            onClick={() => { setConfirmId(c.customerId); setTargetStatus(!c.isActive) }}
-                          >
-                            {c.isActive ? 'Deactivate' : 'Activate'}
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <div className="px-4 pb-3">
-              <Pagination page={page} pageSize={50} total={total} onChange={setPage} />
-            </div>
-          </>
+          <div className="ag-theme-quartz" style={{ height: 600, width: '100%' }}>
+            <AgGridReact
+              rowData={customers}
+              columnDefs={colDefs}
+              defaultColDef={defaultColDef}
+              pagination={true}
+              paginationPageSize={50}
+              paginationPageSizeSelector={[25, 50, 100, 250]}
+              rowSelection="single"
+              onRowClicked={e => navigate(`/organizations/${organizationId}/customers/${e.data.customerId}`)}
+              getRowId={p => p.data.customerId}
+              suppressCellFocus={true}
+              rowClass="cursor-pointer"
+            />
+          </div>
         )}
       </div>
 

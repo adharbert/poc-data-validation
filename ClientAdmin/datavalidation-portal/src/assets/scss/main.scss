@@ -622,3 +622,14 @@ body {
   padding-bottom: .375rem;
   border-bottom:  2px solid #e5e7eb;
 }
+
+// ---------------------------------------------------------------------------
+// Utilities
+// ---------------------------------------------------------------------------
+.cursor-pointer { cursor: pointer; }
+
+// AG Grid row hover cursor when rows are clickable
+.ag-theme-quartz .ag-row.cursor-pointer {
+  cursor: pointer;
+  &:hover { background-color: #f0f4ff !important; }
+}

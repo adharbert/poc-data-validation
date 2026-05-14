@@ -10,30 +10,31 @@ import {
   StatusBadge, ConfirmModal, EmptyState, useToast,
 } from '@/components/common/index.jsx'
 
-const FIELD_TYPES = ['text', 'number', 'date', 'dropdown', 'multiselect', 'boolean', 'phone']
+const FIELD_TYPES = ['text', 'number', 'date', 'dropdown', 'multiselect', 'checkbox', 'phone']
 
 const PHONE_FORMATS = ['(XXX) XXX-XXXX', 'XXX-XXX-XXXX', 'XXX.XXX.XXXX']
 
-function FieldModal({ organizationId, field, onClose }) {
+function FieldModal({ organizationId, field, allFields, onClose }) {
   const toast  = useToast()
   const create = useCreateField(organizationId)
   const update = useUpdateField(organizationId)
   const isEdit = !!field
 
-  const { register, handleSubmit, watch, formState: { errors } } = useForm({
+  const { register, handleSubmit, watch, setValue, formState: { errors } } = useForm({
     defaultValues: {
       organizationId,
-      fieldKey:       field?.fieldKey       ?? '',
-      fieldLabel:     field?.fieldLabel     ?? '',
-      fieldType:      field?.fieldType      ?? 'text',
-      isRequired:     field?.isRequired     ?? false,
-      helpText:       field?.helpText       ?? '',
-      regexPattern:   field?.regexPattern   ?? '',
-      minValue:       field?.minValue       ?? '',
-      maxValue:       field?.maxValue       ?? '',
-      displayOrder:   field?.displayOrder   ?? '',
-      displayFormat:  field?.displayFormat  ?? PHONE_FORMATS[0],
-      isActive:       field?.isActive       ?? true,
+      fieldKey:               field?.fieldKey              ?? '',
+      fieldLabel:             field?.fieldLabel            ?? '',
+      fieldType:              field?.fieldType             ?? 'text',
+      isRequired:             field?.isRequired            ?? false,
+      helpText:               field?.helpText              ?? '',
+      regexPattern:           field?.regexPattern          ?? '',
+      minValue:               field?.minValue              ?? '',
+      maxValue:               field?.maxValue              ?? '',
+      displayOrder:           field?.displayOrder          ?? '',
+      displayFormat:          field?.displayFormat         ?? PHONE_FORMATS[0],
+      isActive:               field?.isActive              ?? true,
+      optionsSourceFieldId:   field?.optionsSourceFieldId  ?? '',
     },
   })
 
@@ -41,12 +42,14 @@ function FieldModal({ organizationId, field, onClose }) {
   const saving    = create.isPending || update.isPending
 
   async function onSubmit(values) {
+    const isOptionsType = values.fieldType === 'dropdown' || values.fieldType === 'multiselect'
     const payload = {
       ...values,
-      minValue:      values.minValue      === '' ? null : Number(values.minValue),
-      maxValue:      values.maxValue      === '' ? null : Number(values.maxValue),
-      displayOrder:  values.displayOrder  === '' ? null : Number(values.displayOrder),
-      displayFormat: values.fieldType === 'phone' ? values.displayFormat : null,
+      minValue:             values.minValue      === '' ? null : Number(values.minValue),
+      maxValue:             values.maxValue      === '' ? null : Number(values.maxValue),
+      displayOrder:         values.displayOrder  === '' ? null : Number(values.displayOrder),
+      displayFormat:        values.fieldType === 'phone' ? values.displayFormat : null,
+      optionsSourceFieldId: isOptionsType ? (values.optionsSourceFieldId || null) : null,
     }
     try {
       if (isEdit) {
@@ -76,11 +79,16 @@ function FieldModal({ organizationId, field, onClose }) {
                 <div className="col-6">
                   <label className="form-label fw-semibold">Field Key <span className="text-danger">*</span></label>
                   <input
-                    className={`form-control ${errors.fieldKey ? 'is-invalid' : ''}`}
+                    className={`form-control font-monospace ${errors.fieldKey ? 'is-invalid' : ''}`}
                     {...register('fieldKey', { required: 'Required' })}
+                    onChange={e => {
+                      const normalized = e.target.value.toLowerCase().replace(/\s+/g, '_')
+                      setValue('fieldKey', normalized, { shouldValidate: true })
+                    }}
                     disabled={isEdit}
                   />
                   {isEdit && <div className="form-text text-muted">Key cannot be changed after creation.</div>}
+                  {!isEdit && <div className="form-text text-muted">Lowercase letters, numbers, and underscores only.</div>}
                   {errors.fieldKey && <div className="invalid-feedback">{errors.fieldKey.message}</div>}
                 </div>
                 <div className="col-6">
@@ -139,9 +147,16 @@ function FieldModal({ organizationId, field, onClose }) {
                 )}
                 {(fieldType === 'dropdown' || fieldType === 'multiselect') && (
                   <div className="col-12">
-                    <div className="alert alert-info py-2 mb-0" style={{ fontSize: '.85rem' }}>
-                      After creating the field, use the <strong>Options</strong> button to add dropdown values.
-                    </div>
+                    <label className="form-label">Inherit options from</label>
+                    <select className="form-select" {...register('optionsSourceFieldId')}>
+                      <option value="">— Own options —</option>
+                      {(allFields ?? [])
+                        .filter(f => (f.fieldType === 'dropdown' || f.fieldType === 'multiselect') && f.fieldDefinitionId !== field?.fieldDefinitionId)
+                        .map(f => (
+                          <option key={f.fieldDefinitionId} value={f.fieldDefinitionId}>{f.fieldLabel}</option>
+                        ))}
+                    </select>
+                    <div className="form-text">When set, this field shares options with the selected field. Leave blank to manage options independently.</div>
                   </div>
                 )}
               </div>
@@ -159,16 +174,30 @@ function FieldModal({ organizationId, field, onClose }) {
   )
 }
 
-function FieldOptionsModal({ fieldId, fieldLabel, onClose }) {
-  const toast    = useToast()
-  const { data: options, isLoading } = useFieldOptions(fieldId)
-  const save     = useSaveFieldOptions(fieldId)
+function FieldOptionsModal({ organizationId, field, allFields, onClose }) {
+  const toast  = useToast()
+  const update = useUpdateField(organizationId)
+
+  // Local source state — lets the user pick a source and preview before saving
+  const [localSourceId, setLocalSourceId] = useState(field.optionsSourceFieldId ?? '')
   const [items, setItems] = useState(null)
+
+  const sourceChanged  = localSourceId !== (field.optionsSourceFieldId ?? '')
+  const isInherited    = !!localSourceId
+  const effectiveId    = localSourceId || field.fieldDefinitionId
+
+  // Options always reflect the effective field (own or source)
+  const { data: options, isLoading } = useFieldOptions(organizationId, effectiveId)
+  const save = useSaveFieldOptions(organizationId, field.fieldDefinitionId)
 
   const opts = items ?? (options ?? [])
 
+  const sourceFields = (allFields ?? []).filter(
+    f => (f.fieldType === 'dropdown' || f.fieldType === 'multiselect') && f.fieldDefinitionId !== field.fieldDefinitionId
+  )
+
   function addItem() {
-    setItems([...opts, { optionValue: '', optionLabel: '', displayOrder: opts.length + 1, isActive: true }])
+    setItems([...opts, { optionKey: '', optionLabel: '', displayOrder: opts.length + 1, isActive: true }])
   }
 
   function updateItem(i, key, val) {
@@ -179,7 +208,37 @@ function FieldOptionsModal({ fieldId, fieldLabel, onClose }) {
     setItems(opts.filter((_, idx) => idx !== i))
   }
 
-  async function handleSave() {
+  async function handleSaveSource() {
+    try {
+      await update.mutateAsync({
+        fieldId: field.fieldDefinitionId,
+        data: {
+          fieldDefinitionId:    field.fieldDefinitionId,
+          sectionId:            field.sectionId,
+          fieldLabel:           field.fieldLabel,
+          fieldType:            field.fieldType,
+          placeholderText:      field.placeholderText,
+          helpText:             field.helpText,
+          isRequired:           field.isRequired,
+          isActive:             field.isActive,
+          displayOrder:         field.displayOrder,
+          minValue:             field.minValue,
+          maxValue:             field.maxValue,
+          minLength:            field.minLength,
+          maxLength:            field.maxLength,
+          regexPattern:         field.regexPattern,
+          displayFormat:        field.displayFormat,
+          optionsSourceFieldId: localSourceId || null,
+        },
+      })
+      toast(localSourceId ? 'Options source saved.' : 'Field set to use own options.')
+      onClose()
+    } catch (err) {
+      toast(err.message ?? 'Error saving source.', 'danger')
+    }
+  }
+
+  async function handleSaveOptions() {
     try {
       await save.mutateAsync(opts)
       toast('Options saved.')
@@ -194,16 +253,43 @@ function FieldOptionsModal({ fieldId, fieldLabel, onClose }) {
       <div className="modal-dialog modal-dialog-centered">
         <div className="modal-content">
           <div className="modal-header">
-            <h5 className="modal-title">Options — {fieldLabel}</h5>
+            <h5 className="modal-title">Options — {field.fieldLabel}</h5>
             <button type="button" className="btn-close" onClick={onClose} />
           </div>
           <div className="modal-body">
-            {isLoading ? <LoadingState /> : (
+            {/* Source selector — always visible for dropdown/multiselect */}
+            <div className="mb-3">
+              <label className="form-label fw-semibold">Inherit options from</label>
+              <select className="form-select form-select-sm" value={localSourceId}
+                onChange={e => { setLocalSourceId(e.target.value); setItems(null) }}>
+                <option value="">— Own options —</option>
+                {sourceFields.map(f => (
+                  <option key={f.fieldDefinitionId} value={f.fieldDefinitionId}>{f.fieldLabel}</option>
+                ))}
+              </select>
+              {isInherited && (
+                <div className="form-text">Options are shared from the selected field. Manage them on the source field.</div>
+              )}
+            </div>
+
+            <hr className="my-2" />
+
+            {isLoading ? <LoadingState /> : isInherited ? (
+              <div className="d-flex flex-column gap-1">
+                {opts.map((opt, i) => (
+                  <div key={i} className="d-flex gap-2 align-items-center px-1 py-1 rounded" style={{ background: '#f9fafb' }}>
+                    <code className="text-muted-sm" style={{ minWidth: 120 }}>{opt.optionKey}</code>
+                    <span style={{ fontSize: '.875rem' }}>{opt.optionLabel}</span>
+                  </div>
+                ))}
+                {!opts.length && <p className="text-muted-sm mb-0">No options defined on source field yet.</p>}
+              </div>
+            ) : (
               <>
                 {opts.map((opt, i) => (
                   <div key={i} className="d-flex gap-2 mb-2 align-items-center">
-                    <input className="form-control form-control-sm" placeholder="Value" value={opt.optionValue}
-                      onChange={e => updateItem(i, 'optionValue', e.target.value)} />
+                    <input className="form-control form-control-sm" placeholder="Value" value={opt.optionKey || ''}
+                      onChange={e => updateItem(i, 'optionKey', e.target.value)} />
                     <input className="form-control form-control-sm" placeholder="Label" value={opt.optionLabel || ''}
                       onChange={e => updateItem(i, 'optionLabel', e.target.value)} />
                     <button type="button" className="btn btn-sm btn-outline-danger" onClick={() => removeItem(i)}>✕</button>
@@ -215,9 +301,16 @@ function FieldOptionsModal({ fieldId, fieldLabel, onClose }) {
           </div>
           <div className="modal-footer">
             <button className="btn btn-outline-secondary" onClick={onClose}>Cancel</button>
-            <button className="btn btn-primary" onClick={handleSave} disabled={save.isPending}>
-              {save.isPending ? 'Saving…' : 'Save Options'}
-            </button>
+            {sourceChanged && (
+              <button className="btn btn-primary" onClick={handleSaveSource} disabled={update.isPending}>
+                {update.isPending ? 'Saving…' : 'Save Source'}
+              </button>
+            )}
+            {!isInherited && !sourceChanged && (
+              <button className="btn btn-primary" onClick={handleSaveOptions} disabled={save.isPending}>
+                {save.isPending ? 'Saving…' : 'Save Options'}
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -295,10 +388,15 @@ export default function FieldDefinitionsPage() {
               </thead>
               <tbody>
                 {fields.map(f => (
-                  <tr key={f.fieldId}>
+                  <tr key={f.fieldDefinitionId}>
                     <td className="text-muted-sm">{f.displayOrder ?? '—'}</td>
                     <td><code className="text-muted-sm">{f.fieldKey}</code></td>
-                    <td className="fw-semibold">{f.fieldLabel}</td>
+                    <td className="fw-semibold">
+                      {f.fieldLabel}
+                      {f.optionsSourceFieldId && (
+                        <span className="badge bg-info-subtle text-info-emphasis ms-2" style={{ fontSize: '.7rem' }}>Inherited</span>
+                      )}
+                    </td>
                     <td><FieldTypeBadge type={f.fieldType} /></td>
                     <td>{f.isRequired ? <span className="text-danger fw-semibold">Yes</span> : <span className="text-muted-sm">No</span>}</td>
                     <td><StatusBadge active={f.isActive} /></td>
@@ -312,7 +410,7 @@ export default function FieldDefinitionsPage() {
                         <button className="btn btn-sm btn-outline-secondary" onClick={() => setEditField(f)}>Edit</button>
                         <button
                           className={`btn btn-sm ${f.isActive ? 'btn-outline-danger' : 'btn-outline-success'}`}
-                          onClick={() => { setConfirmId(f.fieldId); setTargetStatus(!f.isActive) }}
+                          onClick={() => { setConfirmId(f.fieldDefinitionId); setTargetStatus(!f.isActive) }}
                         >
                           {f.isActive ? 'Deactivate' : 'Activate'}
                         </button>
@@ -330,14 +428,16 @@ export default function FieldDefinitionsPage() {
         <FieldModal
           organizationId={organizationId}
           field={editField}
+          allFields={fields ?? []}
           onClose={() => { setShowCreate(false); setEditField(null) }}
         />
       )}
 
       {optionsField && (
         <FieldOptionsModal
-          fieldId={optionsField.fieldId}
-          fieldLabel={optionsField.fieldLabel}
+          organizationId={organizationId}
+          field={optionsField}
+          allFields={fields ?? []}
           onClose={() => setOptionsField(null)}
         />
       )}

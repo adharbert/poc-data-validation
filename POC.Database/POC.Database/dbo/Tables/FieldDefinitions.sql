@@ -31,18 +31,23 @@ CREATE TABLE FieldDefinitions (
 	[MaxLength]				int					NULL,		-- for text fields
 	[RegExPattern]			nvarchar(500)		NULL,		-- for text fields
 	[DisplayFormat]			nvarchar(20)		NULL,		-- for phone fields: '(XXX) XXX-XXXX', 'XXX-XXX-XXXX', 'XXX.XXX.XXXX'
+	[OptionsSourceFieldId]	[uniqueidentifier]	NULL,		-- when set, options are shared from this field (no local options stored)
 	[CreatedDt]				datetime			NOT NULL	DEFAULT(GETUTCDATE()),
-	[ModifiedDt]			datetime			NOT NULL	DEFAULT(GETUTCDATE()),	
-	
+	[ModifiedDt]			datetime			NOT NULL	DEFAULT(GETUTCDATE()),
+
 	CONSTRAINT [PK_FieldDefinitions] PRIMARY KEY CLUSTERED (Id),
-	
-	CONSTRAINT [FK_FieldDefinitions_Organizations] 
+
+	CONSTRAINT [FK_FieldDefinitions_Organizations]
 		FOREIGN KEY([OrganizationId])
 		REFERENCES [dbo].[Organizations] ([Id]),
-		
-	CONSTRAINT [FK_FieldDefinitions_FieldSections] 
+
+	CONSTRAINT [FK_FieldDefinitions_FieldSections]
 		FOREIGN KEY([FieldSectionId])
 		REFERENCES [dbo].[FieldSections] ([Id]),
+
+	CONSTRAINT [FK_FieldDefinitions_OptionsSource]
+		FOREIGN KEY([OptionsSourceFieldId])
+		REFERENCES [dbo].[FieldDefinitions] ([Id]),
 
 	CONSTRAINT [UQ_FieldDefinitions_Key] UNIQUE ([OrganizationId], [FieldKey]),
 

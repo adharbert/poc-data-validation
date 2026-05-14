@@ -140,7 +140,7 @@ Create a new field definition.
 }
 ```
 
-**Valid fieldType values:** `text`, `number`, `date`, `datetime`, `boolean`, `checkbox`, `dropdown`, `multiselect`, `phone`
+**Valid fieldType values:** `text`, `number`, `date`, `datetime`, `checkbox`, `dropdown`, `multiselect`, `phone`
 
 **`displayFormat`** — only used when `fieldType` is `phone`. Controls how stored digits are rendered.
 Valid values: `"(XXX) XXX-XXXX"`, `"XXX-XXX-XXXX"`, `"XXX.XXX.XXXX"`. Null for all other field types.
@@ -468,6 +468,175 @@ Activate or deactivate a contract.
 
 ---
 
+## Contract Amendments
+
+Amendments may only be added to a contract that is active and not yet expired.
+Each amendment can extend the end date and/or add cost. At least one must be supplied.
+Cost is additive — `TotalCost` on the contract header grows with each amendment.
+
+### GET /api/organisations/{organisationId}/contracts/{contractId}/amendments
+List all amendments for a contract in amendment number order.
+
+**Response:** `200 OK` — array of `ContractAmendmentDto`
+
+---
+
+### POST /api/organisations/{organisationId}/contracts/{contractId}/amendments
+Add an amendment. Rejected if the contract is inactive or its `EndDate` is in the past.
+
+**Body:**
+```json
+{
+  "amendmentDate": "2026-06-01",
+  "newEndDate": "2027-06-30",
+  "amendmentCost": 30000.00,
+  "notes": "Scope extension and cost increase",
+  "documentFileName": "Amendment_1_Signed.pdf",
+  "createdBy": "admin@example.com"
+}
+```
+
+At least one of `newEndDate` or `amendmentCost` must be provided.
+
+**Response:** `201 Created` — `ContractAmendmentDto`
+**Response:** `400 Bad Request` — neither `newEndDate` nor `amendmentCost` provided
+**Response:** `409 Conflict` — contract is inactive or expired
+
+### ContractAmendmentDto
+```json
+{
+  "amendmentId": "guid",
+  "contractId": "guid",
+  "amendmentNumber": 1,
+  "amendmentDate": "2026-06-01",
+  "previousEndDate": "2026-12-31",
+  "newEndDate": "2027-06-30",
+  "amendmentCost": 30000.00,
+  "notes": "Scope extension and cost increase",
+  "documentFileName": "Amendment_1_Signed.pdf",
+  "documentPath": null,
+  "createdDt": "2026-06-01T09:00:00Z",
+  "createdBy": "admin@example.com"
+}
+```
+
+---
+
+## Contract Line Items
+
+Detail records scoped to a contract. `amendmentId = null` means the line item belongs
+to the original contract terms; otherwise it belongs to a specific amendment.
+
+### GET /api/organisations/{organisationId}/contracts/{contractId}/line-items
+List all line items for a contract, ordered by `amendmentId` (nulls first) then `displayOrder`.
+
+**Query params:**
+- `amendmentId` (guid, optional) — filter to a specific amendment; pass `null` to return only original items
+
+**Response:** `200 OK` — array of `ContractLineItemDto`
+
+---
+
+### POST /api/organisations/{organisationId}/contracts/{contractId}/line-items
+Add a line item to the contract or an amendment.
+
+**Body:**
+```json
+{
+  "amendmentId": null,
+  "lineItemDescription": "Platform licensing fee",
+  "quantity": 1,
+  "unitCost": 50000.00,
+  "totalCost": 50000.00,
+  "notes": null,
+  "displayOrder": 1,
+  "createdBy": "admin@example.com"
+}
+```
+
+**Response:** `201 Created` — `ContractLineItemDto`
+**Response:** `404 Not Found` — `amendmentId` not found or doesn't belong to this contract
+
+---
+
+### PUT /api/organisations/{organisationId}/contracts/{contractId}/line-items/{lineItemId}
+Update a line item.
+
+**Response:** `200 OK` — `ContractLineItemDto`
+**Response:** `404 Not Found`
+
+---
+
+### DELETE /api/organisations/{organisationId}/contracts/{contractId}/line-items/{lineItemId}
+Delete a line item.
+
+**Response:** `204 No Content`
+**Response:** `404 Not Found`
+
+---
+
+## Contract Documents
+
+Upload, list, download, and delete files attached to a contract or one of its amendments.
+Files are stored on the server under `ContractSettings:UploadPath` (default `uploads/contracts/{contractId}/`).
+
+Accepted file types: PDF, Word (`.doc`, `.docx`), JPEG, PNG.
+
+The download endpoint returns `Content-Disposition: inline` so the browser opens supported
+types (PDF, images) directly without forcing a download.
+
+### GET /api/organisations/{organisationId}/contracts/{contractId}/documents
+List all documents for a contract (both contract-level and amendment-level), ordered by `AmendmentId` then `UploadedAt DESC`.
+
+**Response:** `200 OK` — array of `ContractDocumentDto`
+
+---
+
+### POST /api/organisations/{organisationId}/contracts/{contractId}/documents
+Upload a document. Attach to an amendment by including `amendmentId` in the form body; omit it for a contract-level document.
+
+**Body:** `multipart/form-data`
+- `file` — the document file (PDF, Word, JPEG, or PNG)
+- `amendmentId` (guid, optional) — attach to a specific amendment
+- `uploadedBy` (string)
+
+**Response:** `201 Created` — `ContractDocumentDto`
+**Response:** `400 Bad Request` — no file provided or unsupported file type
+**Response:** `404 Not Found` — contract not found
+
+---
+
+### GET /api/organisations/{organisationId}/contracts/{contractId}/documents/{documentId}
+Download / open a document. Returns the raw file with the original `Content-Type`.
+`Content-Disposition: inline` — browsers open PDFs directly; other types may download.
+
+**Response:** `200 OK` — raw file bytes
+**Response:** `404 Not Found` — document record not found or file missing from disk
+
+---
+
+### DELETE /api/organisations/{organisationId}/contracts/{contractId}/documents/{documentId}
+Delete a document. Removes both the database record and the file on disk.
+
+**Response:** `204 No Content`
+**Response:** `404 Not Found`
+
+### ContractDocumentDto
+```json
+{
+  "documentId": "guid",
+  "contractId": "guid",
+  "amendmentId": null,
+  "originalFileName": "Contract_2026_Signed.pdf",
+  "contentType": "application/pdf",
+  "fileSizeBytes": 245760,
+  "uploadedAt": "2026-01-15T09:00:00Z",
+  "uploadedBy": "admin@example.com"
+}
+```
+
+---
+
 ## Marketing Projects
 
 All project routes are scoped under an organisation. Multiple projects
@@ -499,6 +668,7 @@ Create a new marketing project. Project ID is auto-assigned starting at 8000.
 {
   "contractId": null,
   "projectName": "Spring 2026 Campaign",
+  "projectType": "public_university",
   "marketingStartDate": "2026-03-01",
   "marketingEndDate": "2026-06-30",
   "notes": null,
@@ -506,7 +676,10 @@ Create a new marketing project. Project ID is auto-assigned starting at 8000.
 }
 ```
 
+**`projectType` is required.** Allowed values: `public_university` | `private_university` | `public_high_school` | `private_high_school` | `fraternities` | `sororities` | `military` | `general` | `story_cause`
+
 **Response:** `201 Created` — `MarketingProjectDto`
+**Response:** `400 Bad Request` — missing or invalid `projectType`
 
 ---
 
@@ -527,6 +700,137 @@ Toggle project active/inactive.
 ```
 
 **Response:** `204 No Content`
+
+---
+
+## Segmentations
+
+All segmentation routes are scoped under a project. Segments are named groupings of
+customers within a project. A customer may belong to one or many segments.
+
+### GET /api/organisations/{organisationId}/projects/{projectId}/segmentations
+List all segmentations for a project.
+
+**Query params:**
+- `includeInactive` (bool, default false)
+
+**Response:** `200 OK` — array of `SegmentationDto`
+
+---
+
+### GET /api/organisations/{organisationId}/projects/{projectId}/segmentations/{segmentationId}
+Get a single segmentation.
+
+**Response:** `200 OK` — `SegmentationDto`
+**Response:** `404 Not Found`
+
+---
+
+### POST /api/organisations/{organisationId}/projects/{projectId}/segmentations
+Create a segmentation manually.
+
+**Body:**
+```json
+{
+  "segmentationName": "Nursing",
+  "segmentationKey": "nursing",
+  "description": null,
+  "displayOrder": 1
+}
+```
+
+**Response:** `201 Created` — `SegmentationDto`
+**Response:** `409 Conflict` — `segmentationKey` already exists for this project
+
+---
+
+### PUT /api/organisations/{organisationId}/projects/{projectId}/segmentations/{segmentationId}
+Update a segmentation name, description, or display order. `segmentationKey` cannot be changed.
+
+**Response:** `200 OK` — `SegmentationDto`
+**Response:** `404 Not Found`
+
+---
+
+### PATCH /api/organisations/{organisationId}/projects/{projectId}/segmentations/{segmentationId}/status
+Activate or deactivate a segmentation. Customer assignments are retained.
+
+**Body:**
+```json
+{ "isActive": false }
+```
+
+**Response:** `204 No Content`
+
+---
+
+### POST /api/organisations/{organisationId}/projects/{projectId}/segmentations/from-field
+Build segmentations by splitting an existing imported field. Pass `dryRun: true` to preview
+the distinct values and customer counts without committing any changes.
+
+**Body:**
+```json
+{
+  "fieldDefinitionId": "guid",
+  "dryRun": true
+}
+```
+
+**Response (dryRun = true):** `200 OK` — preview of segments that would be created
+```json
+{
+  "fieldLabel": "School Program",
+  "segments": [
+    { "segmentationKey": "nursing",      "segmentationName": "Nursing",      "customerCount": 120 },
+    { "segmentationKey": "engineering",  "segmentationName": "Engineering",  "customerCount": 95 }
+  ]
+}
+```
+
+**Response (dryRun = false):** `201 Created` — array of created `SegmentationDto` records
+
+---
+
+### POST /api/organisations/{organisationId}/projects/{projectId}/segmentations/import
+Upload a CSV/Excel file to assign customers to segmentations via `OriginalId` matching.
+At least two columns must be mapped: one to `OriginalId`, one to the segmentation key.
+Missing segmentations are created automatically.
+
+**Body:** `multipart/form-data`
+- `file` — CSV/XLSX/XLS file
+- `originalIdColumn` — header name of the column containing customer `OriginalId` values
+- `segmentationColumn` — header name of the column containing segmentation key/name values
+- `uploadedBy` (string)
+
+**Response:** `201 Created`
+```json
+{
+  "segmentationsCreated": 3,
+  "customersAssigned": 215,
+  "unmatchedOriginalIds": 4,
+  "errors": ["OriginalId 'XYZ-999' not found in this organisation"]
+}
+```
+
+---
+
+### GET /api/organisations/{organisationId}/customers/{customerId}/segmentations
+List all segmentation assignments for a customer across all projects in this organisation.
+
+**Response:** `200 OK` — array of `CustomerSegmentationDto`
+```json
+[
+  {
+    "segmentationId": "guid",
+    "segmentationName": "Nursing",
+    "segmentationKey": "nursing",
+    "projectId": 8001,
+    "projectName": "Spring 2026 Campaign",
+    "source": "field_split",
+    "assignedAt": "2026-03-15T10:00:00Z"
+  }
+]
+```
 
 ---
 
@@ -584,6 +888,50 @@ Update a customer.
 Activate or deactivate a customer.
 
 **Response:** `204 No Content`
+
+---
+
+### GET /api/organisations/{organisationId}/customers/{customerId}/emails
+List all email addresses for a customer.
+
+**Response:** `200 OK` — array of `CustomerEmailDto`
+
+---
+
+### GET /api/organisations/{organisationId}/customers/{customerId}/phones
+List all phone numbers for a customer.
+
+**Response:** `200 OK` — array of `CustomerPhoneDto`
+
+---
+
+### CustomerEmailDto
+```json
+{
+  "emailId": "guid",
+  "customerId": "guid",
+  "emailAddress": "jane@example.com",
+  "emailType": "personal",
+  "isPrimary": true,
+  "isActive": true,
+  "createdUtcDt": "2026-04-30T00:00:00Z",
+  "modifiedUtcDt": "2026-04-30T00:00:00Z"
+}
+```
+
+### CustomerPhoneDto
+```json
+{
+  "phoneId": "guid",
+  "customerId": "guid",
+  "phoneNumber": "2175550100",
+  "phoneType": "mobile",
+  "isPrimary": true,
+  "isActive": true,
+  "createdUtcDt": "2026-04-30T00:00:00Z",
+  "modifiedUtcDt": "2026-04-30T00:00:00Z"
+}
+```
 
 ---
 
@@ -742,6 +1090,39 @@ Check for saved column mappings. Returns array of `ColumnMatchResultDto` (empty 
 ### POST /api/organisations/{organisationId}/imports/{batchId}/mappings
 Save column mappings for a batch. Advances status to `preview`. Body: `SaveMappingsRequest`.
 
+**`ColumnMatchResultDto` / `ColumnMappingDto` shape** (used in saved-mappings response and mapping request body):
+```json
+{
+  "csvHeader": "Full Name",
+  "csvColumnIndex": 2,
+  "destinationTable": "customer",
+  "destinationField": null,
+  "transformType": "split_full_name",
+  "fieldDefinitionId": null,
+  "isAutoMatched": false,
+  "isRequired": false,
+  "savedForReuse": true,
+  "displayOrder": 2,
+  "outputs": [
+    { "outputToken": "FirstName",    "destinationTable": "customer", "destinationField": "FirstName",    "fieldDefinitionId": null, "sortOrder": 1 },
+    { "outputToken": "MiddleName",   "destinationTable": "customer", "destinationField": "MiddleName",   "fieldDefinitionId": null, "sortOrder": 2 },
+    { "outputToken": "LastName",     "destinationTable": "customer", "destinationField": "LastName",     "fieldDefinitionId": null, "sortOrder": 3 },
+    { "outputToken": "Suffix",       "destinationTable": "skip",     "destinationField": null,           "fieldDefinitionId": null, "sortOrder": 4 },
+    { "outputToken": "Credentials",  "destinationTable": "skip",     "destinationField": null,           "fieldDefinitionId": null, "sortOrder": 5 }
+  ]
+}
+```
+
+**`destinationTable` values:** `customer` | `customer_address` | `field_value` | `skip`
+
+**`destinationField` by table:**
+- `customer` → `FirstName`, `LastName`, `MiddleName`, `MaidenName`, `DateOfBirth`, `Email`, `Phone`, `OriginalId`
+- `customer_address` → `AddressLine1`, `AddressLine2`, `City`, `State`, `PostalCode`, `Country`, `AddressType`
+- `field_value` → leave `null`; set `fieldDefinitionId` instead
+- `skip` → leave `null`
+
+**`transformType` values:** `direct` (1:1 mapping) | `split_full_name` (parses name parts via `FullNameParser`; requires `outputs` array)
+
 ---
 
 ### POST /api/organisations/{organisationId}/imports/{batchId}/preview
@@ -750,12 +1131,61 @@ Returns the first 10 rows with mapping applied and per-row validation status. Re
 ---
 
 ### POST /api/organisations/{organisationId}/imports/{batchId}/execute
-Runs the full import asynchronously. Returns `202 Accepted`. Poll batch status for completion.
+Enqueues the import for background execution. Returns `202 Accepted` immediately.
+The UI subscribes to SignalR group `import:{batchId}` and receives an `ImportStatusChanged`
+push when the batch reaches `completed` or `failed`. A 30-second HTTP polling fallback
+is also in place on `useImportBatch`.
+
+---
+
+### POST /api/organisations/{organisationId}/imports/{batchId}/resume
+Re-hydrates a `pending` or `preview` batch. Returns `UploadImportResponseDto` (same
+shape as the original upload response). Used to restore the 5-step wizard from import
+history without re-uploading the file.
+
+---
+
+### POST /api/organisations/{organisationId}/imports/{batchId}/reset
+Resets a completed or failed batch so it can be re-executed.
+
+**Query params:**
+- `targetStatus` — `pending` (return to column mapping; clears `MappingSavedAt`) or `preview` (keep mappings, re-run only)
+
+**Response:** `204 No Content`
+**Response:** `400 Bad Request` — invalid `targetStatus`
+**Response:** `409 Conflict` — batch is actively importing
+
+---
+
+### POST /api/organisations/{organisationId}/imports/{batchId}/cancel
+Marks a batch as `cancelled`.
+
+**Response:** `204 No Content`
+
+---
+
+### DELETE /api/organisations/{organisationId}/imports/{batchId}
+Deletes the batch record and removes the uploaded file from disk.
+
+**Response:** `204 No Content`
 
 ---
 
 ### GET /api/organisations/{organisationId}/imports/{batchId}/errors
-Returns failed rows. Returns array of `ImportErrorDto`.
+Returns all error and warning rows for a batch. `errorType` values: `validation`, `duplicate`, `system`, `warning`.
+
+**`warning` rows** are rows that were *imported* (customer created) but had partial data — for example, an address was skipped because one or more required fields were missing.
+
+Returns array of `ImportErrorDto`:
+```json
+{
+  "errorId": 1,
+  "rowNumber": 14,
+  "errorType": "warning",
+  "errorMessage": "Address skipped: missing one or more required fields (AddressLine1, City, State, PostalCode).",
+  "rawData": "[\"Jane\",\"Smith\",\"\",\"Springfield\",\"\",\"62701\"]"
+}
+```
 
 ---
 
@@ -806,6 +1236,27 @@ PUT  /api/portal/sessions/{sessionId}/complete Mark session as complete
   "createdBy": "admin",
   "updatedAt": "2024-11-01T00:00:00Z",
   "modifiedBy": null
+}
+```
+
+### ContractDto
+```json
+{
+  "contractId": "guid",
+  "organizationId": "guid",
+  "contractName": "2026 Service Agreement",
+  "contractNumber": "SA-2026-001",
+  "startDate": "2026-01-01",
+  "originalEndDate": "2026-12-31",
+  "endDate": "2027-06-30",
+  "originalCost": 100000.00,
+  "totalCost": 130000.00,
+  "isActive": true,
+  "notes": null,
+  "createdDt": "2026-01-01T00:00:00Z",
+  "createdBy": "admin@example.com",
+  "modifiedDt": "2026-06-01T09:00:00Z",
+  "modifiedBy": "admin@example.com"
 }
 ```
 

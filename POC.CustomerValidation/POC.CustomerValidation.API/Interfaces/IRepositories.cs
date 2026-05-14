@@ -52,6 +52,13 @@ public interface IOrganizationRepository
     /// <param name="organizationId">Guid</param>
     /// <returns>Boolean</returns>
     Task<bool> ExistsAsync(Guid organizationId);
+
+    Task UpdateProvisioningStatusAsync(Guid organizationId, string status, string? connectionString = null);
+
+    /// <summary>
+    /// Returns all organizations that have a fully provisioned isolated database.
+    /// </summary>
+    Task<IEnumerable<Organization>> GetAllIsolatedAsync();
 }
 
 
@@ -353,7 +360,10 @@ public interface IImportRepository
     /// <summary>Returns all column mappings for a batch.</summary>
     Task<IEnumerable<ImportColumnMapping>> GetMappingsByBatchIdAsync(Guid batchId);
 
-    /// <summary>Replaces all column mappings for a batch in a single transaction.</summary>
+    /// <summary>Returns split-transform output assignments for all mappings in a batch.</summary>
+    Task<IEnumerable<ImportColumnMappingOutput>> GetMappingOutputsByBatchIdAsync(Guid batchId);
+
+    /// <summary>Replaces all column mappings (and their split outputs) for a batch in a single transaction.</summary>
     Task SaveMappingsAsync(Guid batchId, IEnumerable<ImportColumnMapping> mappings);
 
     /// <summary>Writes a row error to ImportErrors.</summary>
@@ -367,6 +377,15 @@ public interface IImportRepository
 
     /// <summary>Upserts saved column mappings keyed by org + fingerprint + header.</summary>
     Task SaveColumnMappingsAsync(Guid organisationId, string fingerprint, IEnumerable<SavedColumnMapping> mappings);
+
+    /// <summary>Returns the first batch for an org whose Notes column matches the given source identifier, or null.</summary>
+    Task<ImportBatch?> GetBatchBySourceAsync(Guid organisationId, string sourceIdentifier);
+
+    /// <summary>Deletes a batch and all its associated mappings and errors.</summary>
+    Task DeleteBatchAsync(Guid batchId);
+
+    /// <summary>Deletes all error rows for a batch without deleting the batch itself.</summary>
+    Task ClearErrorsAsync(Guid batchId);
 }
 
 
@@ -447,11 +466,68 @@ public class FieldPreviewRaw
     public string?  HelpText            { get; set; }
     public bool     IsRequired          { get; set; }
     public int      DisplayOrder        { get; set; }
-    public string?  DisplayFormat       { get; set; }
-    public string?  ValueText           { get; set; }
+    public string?  DisplayFormat           { get; set; }
+    public Guid?    OptionsSourceFieldId    { get; set; }
+    public string?  ValueText               { get; set; }
     public decimal? ValueNumber         { get; set; }
     public DateOnly? ValueDate          { get; set; }
     public bool?    ValueBoolean        { get; set; }
+}
+
+
+public interface ICustomerPhoneRepository
+{
+    /// <summary>Returns all phone numbers for a customer.</summary>
+    Task<IEnumerable<CustomerPhone>> GetByCustomerIdAsync(Guid customerId);
+
+    /// <summary>Creates a new phone record.</summary>
+    Task<CustomerPhone> CreateAsync(CustomerPhone phone);
+
+    /// <summary>Updates an existing phone record.</summary>
+    Task<bool> UpdateAsync(CustomerPhone phone);
+
+    /// <summary>Activates or deactivates a phone record.</summary>
+    Task<bool> ChangeStatusAsync(Guid phoneId, bool isActive);
+}
+
+
+public interface ICustomerEmailRepository
+{
+    /// <summary>Returns all email addresses for a customer.</summary>
+    Task<IEnumerable<CustomerEmail>> GetByCustomerIdAsync(Guid customerId);
+
+    /// <summary>Creates a new email record.</summary>
+    Task<CustomerEmail> CreateAsync(CustomerEmail email);
+
+    /// <summary>Updates an existing email record.</summary>
+    Task<bool> UpdateAsync(CustomerEmail email);
+
+    /// <summary>Activates or deactivates an email record.</summary>
+    Task<bool> ChangeStatusAsync(Guid emailId, bool isActive);
+}
+
+
+public interface ILibraryRepository
+{
+    Task<IEnumerable<LibrarySection>> GetAllSectionsAsync(bool includeInactive = false);
+    Task<LibrarySection?> GetSectionByIdAsync(Guid sectionId);
+    Task<Guid> CreateSectionAsync(LibrarySection section);
+    Task<bool> UpdateSectionAsync(LibrarySection section);
+    Task<bool> SetSectionStatusAsync(Guid sectionId, bool isActive);
+
+    Task<IEnumerable<LibraryField>> GetAllFieldsAsync(bool includeInactive = false);
+    Task<LibraryField?> GetFieldByIdAsync(Guid fieldId);
+    Task<Guid> CreateFieldAsync(LibraryField field);
+    Task<bool> UpdateFieldAsync(LibraryField field);
+    Task<bool> SetFieldStatusAsync(Guid fieldId, bool isActive);
+
+    Task<IEnumerable<LibraryFieldOption>> GetOptionsByFieldIdAsync(Guid fieldId);
+    Task BulkUpsertOptionsAsync(Guid fieldId, IEnumerable<LibraryFieldOption> options);
+
+    Task AssignFieldsToSectionAsync(Guid sectionId, IEnumerable<(Guid FieldId, int DisplayOrder)> assignments);
+
+    /// <summary>Returns sections with their ordered fields and options — used for the import picker.</summary>
+    Task<IEnumerable<(LibrarySection Section, IEnumerable<(LibraryField Field, IEnumerable<LibraryFieldOption> Options)> Fields)>> GetSectionsWithFieldsAsync(IEnumerable<Guid> sectionIds);
 }
 
 
@@ -474,4 +550,45 @@ public interface ICustomerAddressRepository
 
     /// <summary>Sets CustomerConfirmed=true on the given address.</summary>
     Task<bool> ConfirmAsync(Guid addressId);
+}
+
+public interface IContractDocumentRepository
+{
+    Task<IEnumerable<ContractDocument>> GetByContractIdAsync(Guid contractId);
+    Task<ContractDocument?> GetByIdAsync(Guid documentId);
+    Task<ContractDocument> CreateAsync(ContractDocument document);
+    Task<bool> DeleteAsync(Guid documentId);
+}
+
+public interface IIngestionRepository
+{
+    // Jobs
+    Task<IngestionJob> CreateJobAsync(IngestionJob job);
+    Task<IngestionJob?> GetJobByIdAsync(Guid jobId);
+    Task<(IEnumerable<IngestionJob> Items, int TotalCount)> GetJobsByOrganizationAsync(Guid organizationId, int page, int pageSize);
+
+    /// <summary>
+    /// Atomically claims the next Pending job by setting its Status to 'Processing'.
+    /// Returns null when no pending jobs exist. Safe for concurrent callers.
+    /// </summary>
+    Task<IngestionJob?> DequeueNextPendingJobAsync();
+
+    Task UpdateJobAsync(IngestionJob job);
+
+    // Staging rows
+    Task CreateStagingRowsAsync(IEnumerable<IngestionStagingRow> rows);
+    Task<(IEnumerable<IngestionStagingRow> Items, int TotalCount)> GetStagingRowsAsync(
+        Guid jobId, string? statusFilter, int page, int pageSize);
+    Task<IEnumerable<IngestionStagingRow>> GetCommittableStagingRowsAsync(Guid jobId);
+    Task UpdateStagingRowAsync(IngestionStagingRow row);
+    Task MarkStagingRowsCommittedAsync(IEnumerable<Guid> rowIds);
+}
+
+
+public interface IFieldOptionAliasRepository
+{
+    Task<IEnumerable<FieldOptionAlias>> GetByOrganizationAsync(Guid organizationId);
+    Task<IEnumerable<FieldOptionAlias>> GetByOrganizationAndFieldsAsync(Guid organizationId, IEnumerable<Guid> fieldDefinitionIds);
+    Task BulkUpsertAsync(IEnumerable<FieldOptionAlias> aliases);
+    Task DeleteAsync(Guid id);
 }

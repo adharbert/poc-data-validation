@@ -15,6 +15,9 @@ public class ContractsController(IContractService service, ILogger<ContractsCont
     private readonly IContractService _service = service;
     private readonly ILogger<ContractsController> _log = log;
 
+
+
+
     /// <summary>List all contracts for an organisation. Active contract is returned first.</summary>
     [HttpGet]
     [EndpointSummary("Contracts — list by organisation")]
@@ -25,6 +28,9 @@ public class ContractsController(IContractService service, ILogger<ContractsCont
         var results = await _service.GetByOrganisationIdAsync(organisationId, includeInactive);
         return Ok(results);
     }
+
+
+
 
     /// <summary>Get a single contract by Id.</summary>
     [HttpGet("{contractId:guid}")]
@@ -37,6 +43,9 @@ public class ContractsController(IContractService service, ILogger<ContractsCont
         var result = await _service.GetByIdAsync(contractId);
         return result is null ? NotFound() : Ok(result);
     }
+
+
+
 
     /// <summary>Create a new contract. Fails if an active contract already exists for the organisation.</summary>
     [HttpPost]
@@ -51,6 +60,9 @@ public class ContractsController(IContractService service, ILogger<ContractsCont
         return CreatedAtAction(nameof(GetById), new { organisationId, contractId = result.ContractId }, result);
     }
 
+
+
+
     /// <summary>Update a contract's details.</summary>
     [HttpPut("{contractId:guid}")]
     [EndpointSummary("Contracts — update")]
@@ -62,6 +74,10 @@ public class ContractsController(IContractService service, ILogger<ContractsCont
         var result = await _service.UpdateAsync(contractId, request);
         return Ok(result);
     }
+
+
+
+
 
     /// <summary>Activate or deactivate a contract.</summary>
     [HttpPatch("{contractId:guid}/status")]
@@ -75,10 +91,10 @@ public class ContractsController(IContractService service, ILogger<ContractsCont
         await _service.ChangeStatusAsync(contractId, request.IsActive, request.ModifiedBy);
         return NoContent();
     }
+
+
+
+
 }
 
-public record SetStatusRequest
-{
-    public bool     IsActive    { get; init; }
-    public string   ModifiedBy  { get; init; } = "System";
-}
+

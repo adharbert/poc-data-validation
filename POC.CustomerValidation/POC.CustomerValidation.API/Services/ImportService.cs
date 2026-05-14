@@ -5,9 +5,12 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using ClosedXML.Excel;
 using CsvHelper;
+using Microsoft.AspNetCore.SignalR;
+using POC.CustomerValidation.API.Hubs;
 using POC.CustomerValidation.API.Interfaces;
 using POC.CustomerValidation.API.Models.DTOs;
 using POC.CustomerValidation.API.Models.Entites;
+using POC.CustomerValidation.API.Services.Provisioning;
 
 namespace POC.CustomerValidation.API.Services;
 
@@ -15,13 +18,31 @@ public class ImportService(
     IImportRepository importRepo,
     IImportColumnStagingRepository stagingRepo,
     IFieldDefinitionRepository fieldRepo,
+    IFieldOptionRepository fieldOptionRepo,
+    IFieldOptionAliasRepository aliasRepo,
     IOrganizationRepository orgRepo,
     ICustomerRepository customerRepo,
+    ICustomerPhoneRepository phoneRepo,
+    ICustomerEmailRepository emailRepo,
+    ICustomerAddressRepository customerAddressRepo,
     IFieldValueRepository fieldValueRepo,
+    IOrganizationStorageService storageService,
+    IImportQueue importQueue,
+    IHubContext<ImportHub, IImportClient> hub,
     IConfiguration config,
     ILogger<ImportService> log) : IImportService
 {
-    private static readonly string[] CustomerFields = ["FirstName", "LastName", "MiddleName", "Email", "OriginalId"];
+    private static readonly string[] CustomerFields =
+        ["FirstName", "LastName", "MiddleName", "MaidenName", "DateOfBirth", "Email", "Phone", "OriginalId"];
+
+    private static readonly string[] AddressFields =
+        ["AddressLine1", "AddressLine2", "City", "State", "PostalCode", "Country", "AddressType", "Latitude", "Longitude"];
+
+    private static readonly string[] EmailFields =
+        ["EmailAddress", "EmailType", "IsPrimary"];
+
+    private static readonly string[] PhoneFields =
+        ["PhoneNumber", "PhoneType", "IsPrimary"];
 
     public async Task<UploadImportResponseDto> UploadAsync(
         Guid organisationId, IFormFile file, string uploadedBy, string duplicateStrategy = "skip")
@@ -68,6 +89,15 @@ public class ImportService(
         var savedMappings   = (await importRepo.GetSavedMappingsAsync(organisationId, fingerprint)).ToList();
         var hasSaved        = savedMappings.Count > 0;
 
+        // Schema drift detection — compare current headers against the org's saved template
+        var (missingMapped, newCols) = DetectSchemaDrift(headers, savedMappings);
+        var schemaDrift = missingMapped.Length > 0;
+
+        if (schemaDrift)
+            log.LogWarning(
+                "Schema drift detected for org {OrgId}: missing mapped columns [{Missing}]",
+                organisationId, string.Join(", ", missingMapped));
+
         // Auto-match each column
         var fieldDefs   = (await fieldRepo.GetByOrganizationIdAsync(organisationId)).ToList();
         var matches     = await AutoMatchHeaders(headers, fieldDefs, savedMappings, organisationId);
@@ -91,11 +121,15 @@ public class ImportService(
 
         return new UploadImportResponseDto
         {
-            BatchId         = batch.BatchId,
-            Headers         = headers,
-            RowCount        = rowCount,
-            HasSavedMappings = hasSaved,
-            ColumnMatches   = matches,
+            BatchId              = batch.BatchId,
+            FileName             = batch.FileName,
+            Headers              = headers,
+            RowCount             = rowCount,
+            HasSavedMappings     = hasSaved,
+            ColumnMatches        = matches,
+            SchemaDrift          = schemaDrift,
+            MissingMappedColumns = missingMapped,
+            NewColumns           = newCols,
         };
     }
 
@@ -115,9 +149,10 @@ public class ImportService(
                 ColumnIndex         = s.CsvColumnIndex,
                 CsvHeader           = s.CsvHeader,
                 MatchStatus         = "matched",
-                MappingType         = s.MappingType,
-                CustomerFieldName   = s.CustomerFieldName,
+                DestinationTable    = s.DestinationTable,
+                DestinationField    = s.DestinationField,
                 FieldDefinitionId   = s.FieldDefinitionId,
+                TransformType       = s.TransformType,
                 FieldLabel          = fd?.FieldLabel,
                 IsAutoMatched       = false,
             };
@@ -133,13 +168,22 @@ public class ImportService(
         {
             ImportBatchId       = batchId,
             CsvHeader           = m.CsvHeader,
-            CsvColumnIndex      = m.ColumnIndex,
-            MappingType         = m.MappingType,
-            CustomerFieldName   = m.CustomerFieldName,
+            CsvColumnIndex      = m.CsvColumnIndex,
+            DestinationTable    = m.DestinationTable,
+            DestinationField    = m.DestinationField,
             FieldDefinitionId   = m.FieldDefinitionId,
+            TransformType       = m.TransformType,
             IsAutoMatched       = false,
             SavedForReuse       = m.SaveForReuse,
             DisplayOrder        = i,
+            Outputs             = m.Outputs.Select(o => new ImportColumnMappingOutput
+            {
+                OutputToken         = o.OutputToken,
+                DestinationTable    = o.DestinationTable,
+                DestinationField    = o.DestinationField,
+                FieldDefinitionId   = o.FieldDefinitionId,
+                SortOrder           = o.SortOrder,
+            }).ToList(),
         }).ToList();
 
         await importRepo.SaveMappingsAsync(batchId, mappings);
@@ -185,19 +229,43 @@ public class ImportService(
         var batch = await importRepo.GetBatchByIdAsync(batchId)
             ?? throw new KeyNotFoundException($"Import batch {batchId} not found.");
 
-        if (batch.Status != "preview")
-            throw new InvalidOperationException($"Batch must be in 'preview' status to execute. Current status: {batch.Status}");
+        // "importing" is set by EnqueueAsync before the batch is queued; accept both to support
+        // direct calls (e.g. blob polling auto-execute) and the normal portal queue path.
+        if (batch.Status is not ("preview" or "importing" or "failed"))
+            throw new InvalidOperationException($"Batch must be in 'preview', 'importing', or 'failed' status to execute. Current: {batch.Status}");
 
-        batch.Status                = "importing";
-        batch.ExecutionStartedAt    = DateTime.UtcNow;
-        await importRepo.UpdateBatchAsync(batch);
+        if (batch.Status is "preview" or "failed")
+        {
+            batch.Status             = "importing";
+            batch.ExecutionStartedAt = DateTime.UtcNow;
+            await importRepo.UpdateBatchAsync(batch);
+        }
+
+        try
+        {
 
         var org = await orgRepo.GetByIdAsync(batch.OrganizationId)!;
         var mappings    = (await importRepo.GetMappingsByBatchIdAsync(batchId)).ToList();
+        var outputs     = (await importRepo.GetMappingOutputsByBatchIdAsync(batchId)).ToList();
+        // Attach outputs to their parent mappings for use in ExtractCustomerFields
+        var outputsByMapping = outputs.GroupBy(o => o.MappingId).ToDictionary(g => g.Key, g => g.ToList());
+        foreach (var m in mappings)
+            if (outputsByMapping.TryGetValue(m.MappingId, out var mo))
+                m.Outputs = mo;
         var fieldDefs   = await GetFieldDefsForBatch(mappings);
         var allRows     = ReadFileRows(batch.FileStoragePath!, batch.FileType!);
 
-        var abbreviation    = (org!.Abbreviation ?? org.OrganizationCode[..Math.Min(4, org.OrganizationCode.Length)]).ToUpperInvariant().Trim();
+        // Build alias lookup: (fieldDefinitionId, aliasValue.lower) → canonicalValue
+        var fieldValueMappingIds = mappings
+            .Where(m => m.DestinationTable == "field_value" && m.FieldDefinitionId.HasValue)
+            .Select(m => m.FieldDefinitionId!.Value)
+            .Distinct();
+        var aliases = await aliasRepo.GetByOrganizationAndFieldsAsync(batch.OrganizationId, fieldValueMappingIds);
+        var aliasLookup = aliases.ToDictionary(
+            a => (a.FieldDefinitionId, a.AliasValue.ToLowerInvariant()),
+            a => a.CanonicalValue);
+
+        var abbreviation    = (org!.Abbreviation ?? org.OrganizationCode[..Math.Min(6, org.OrganizationCode.Length)]).ToUpperInvariant().Trim();
         int imported = 0, skipped = 0, errors = 0;
 
         foreach (var (row, rowNum) in allRows.Select((r, i) => (r, i + 1)))
@@ -205,11 +273,36 @@ public class ImportService(
             try
             {
                 var customerData    = ExtractCustomerFields(row, mappings);
+                var addressData     = ExtractAddressFields(row, mappings);
+                var emailData       = ExtractEmailFields(row, mappings);
+                var phoneData       = ExtractPhoneFields(row, mappings);
                 var fieldValues     = ExtractFieldValues(row, mappings);
 
-                // Deduplication by Email
+                // Warn when address columns were mapped but the row is missing a required field
+                var addrMappings = mappings.Where(m => m.DestinationTable == "customer_address").ToList();
+                if (addressData is null && addrMappings.Count > 0)
+                {
+                    var hasAnyAddressValue = addrMappings.Any(m =>
+                        m.CsvColumnIndex < row.Length && !string.IsNullOrWhiteSpace(row[m.CsvColumnIndex]));
+                    if (hasAnyAddressValue)
+                    {
+                        await importRepo.AddErrorAsync(new ImportError
+                        {
+                            ImportBatchId = batchId,
+                            RowNumber     = rowNum,
+                            RawData       = JsonSerializer.Serialize(row),
+                            ErrorType     = "warning",
+                            ErrorMessage  = "Address skipped: missing one or more required fields (AddressLine1, City, State, PostalCode).",
+                        });
+                    }
+                }
+
+                // Deduplication: OriginalId takes priority, then Email
                 Customer? existing = null;
-                if (!string.IsNullOrWhiteSpace(customerData.Email))
+                if (!string.IsNullOrWhiteSpace(customerData.OriginalId))
+                    existing = await customerRepo.GetByOriginalIdAsync(batch.OrganizationId, customerData.OriginalId);
+
+                if (existing is null && !string.IsNullOrWhiteSpace(customerData.Email))
                     existing = await customerRepo.GetByEmailAsync(batch.OrganizationId, customerData.Email);
 
                 if (existing is not null && batch.DuplicateStrategy == "skip")
@@ -219,13 +312,16 @@ public class ImportService(
                 }
                 if (existing is not null && batch.DuplicateStrategy == "error")
                 {
+                    var dupeMsg = !string.IsNullOrWhiteSpace(customerData.OriginalId) && existing.OriginalId == customerData.OriginalId
+                        ? $"Customer with OriginalId '{customerData.OriginalId}' already exists."
+                        : $"Customer with email '{customerData.Email}' already exists.";
                     await importRepo.AddErrorAsync(new ImportError
                     {
                         ImportBatchId   = batchId,
                         RowNumber       = rowNum,
                         RawData         = JsonSerializer.Serialize(row),
                         ErrorType       = "duplicate",
-                        ErrorMessage    = $"Customer with email '{customerData.Email}' already exists.",
+                        ErrorMessage    = dupeMsg,
                     });
                     errors++;
                     continue;
@@ -240,19 +336,62 @@ public class ImportService(
                         FirstName       = customerData.FirstName ?? throw new InvalidOperationException("FirstName is required."),
                         LastName        = customerData.LastName ?? throw new InvalidOperationException("LastName is required."),
                         MiddleName      = customerData.MiddleName,
+                        MaidenName      = customerData.MaidenName,
+                        DateOfBirth     = customerData.DateOfBirth,
                         OriginalId      = customerData.OriginalId,
                         Email           = customerData.Email,
+                        Phone           = customerData.Phone,
                         CustomerCode    = code,
                         IsActive        = true,
                     };
                     existing = await customerRepo.CreateAsync(customer);
+
+                    if (!string.IsNullOrWhiteSpace(customerData.Phone))
+                        await phoneRepo.CreateAsync(new CustomerPhone
+                        {
+                            CustomerId  = existing.CustomerId,
+                            PhoneNumber = customerData.Phone,
+                            PhoneType   = "mobile",
+                            IsPrimary   = true,
+                        });
+
+                    if (!string.IsNullOrWhiteSpace(customerData.Email))
+                        await emailRepo.CreateAsync(new CustomerEmail
+                        {
+                            CustomerId   = existing.CustomerId,
+                            EmailAddress = customerData.Email,
+                            EmailType    = "personal",
+                            IsPrimary    = true,
+                        });
+
+                    if (addressData is not null)
+                    {
+                        addressData.CustomerId = existing.CustomerId;
+                        await customerAddressRepo.CreateAsync(addressData);
+                    }
+
+                    if (emailData is not null)
+                    {
+                        emailData.CustomerId = existing.CustomerId;
+                        await emailRepo.CreateAsync(emailData);
+                    }
+
+                    if (phoneData is not null)
+                    {
+                        phoneData.CustomerId = existing.CustomerId;
+                        await phoneRepo.CreateAsync(phoneData);
+                    }
                 }
                 else if (batch.DuplicateStrategy == "update")
                 {
-                    existing.FirstName  = customerData.FirstName ?? existing.FirstName;
-                    existing.LastName   = customerData.LastName  ?? existing.LastName;
-                    existing.MiddleName = customerData.MiddleName ?? existing.MiddleName;
-                    existing.OriginalId = customerData.OriginalId ?? existing.OriginalId;
+                    existing.FirstName   = customerData.FirstName  ?? existing.FirstName;
+                    existing.LastName    = customerData.LastName   ?? existing.LastName;
+                    existing.MiddleName  = customerData.MiddleName ?? existing.MiddleName;
+                    existing.MaidenName  = customerData.MaidenName ?? existing.MaidenName;
+                    existing.DateOfBirth = customerData.DateOfBirth ?? existing.DateOfBirth;
+                    existing.OriginalId  = customerData.OriginalId ?? existing.OriginalId;
+                    existing.Email       = customerData.Email  ?? existing.Email;
+                    existing.Phone       = customerData.Phone  ?? existing.Phone;
                     await customerRepo.UpdateAsync(existing);
                 }
 
@@ -262,6 +401,14 @@ public class ImportService(
                     var storedValue = fieldDef?.FieldType == "phone"
                         ? Regex.Replace(value ?? string.Empty, @"\D", "")
                         : value;
+
+                    // Apply org-level alias for dropdown/multiselect fields
+                    if (fieldDef?.FieldType is "dropdown" or "multiselect" &&
+                        storedValue is not null &&
+                        aliasLookup.TryGetValue((fieldDefId, storedValue.ToLowerInvariant()), out var canonical))
+                    {
+                        storedValue = canonical;
+                    }
 
                     await fieldValueRepo.UpsertAsync(new FieldValue
                     {
@@ -297,9 +444,10 @@ public class ImportService(
             HeaderFingerprint   = batch.HeaderFingerprint,
             CsvHeader           = m.CsvHeader,
             CsvColumnIndex      = m.CsvColumnIndex,
-            MappingType         = m.MappingType,
-            CustomerFieldName   = m.CustomerFieldName,
+            DestinationTable    = m.DestinationTable,
+            DestinationField    = m.DestinationField,
             FieldDefinitionId   = m.FieldDefinitionId,
+            TransformType       = m.TransformType,
             DisplayOrder        = m.DisplayOrder,
         }).ToList();
 
@@ -312,8 +460,102 @@ public class ImportService(
         batch.ErrorRows     = errors;
         batch.CompletedAt   = DateTime.UtcNow;
         await importRepo.UpdateBatchAsync(batch);
+        await hub.Clients.Group($"import:{batchId}").ImportStatusChanged(MapBatch(batch));
 
         log.LogInformation("Import batch {BatchId} completed: {Imported} imported, {Skipped} skipped, {Errors} errors", batchId, imported, skipped, errors);
+
+        } // end try
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            batch.Status = "failed";
+            await importRepo.UpdateBatchAsync(batch);
+            await hub.Clients.Group($"import:{batchId}").ImportStatusChanged(MapBatch(batch));
+            throw;
+        }
+    }
+
+    public async Task EnqueueAsync(Guid batchId)
+    {
+        var batch = await importRepo.GetBatchByIdAsync(batchId)
+            ?? throw new KeyNotFoundException($"Import batch {batchId} not found.");
+
+        if (batch.Status is not ("preview" or "failed" or "importing"))
+            throw new InvalidOperationException($"Batch must be in 'preview', 'failed', or 'importing' status to queue. Current: {batch.Status}");
+
+        batch.Status             = "importing";
+        batch.ExecutionStartedAt = DateTime.UtcNow;
+        await importRepo.UpdateBatchAsync(batch);
+
+        importQueue.Enqueue(new ImportQueueItem(batchId, batch.OrganizationId));
+    }
+
+    public async Task<ImportBatchDto?> CreateBatchFromBlobAsync(
+        Guid organisationId, int projectId,
+        string containerName, string blobPath, string fileName, string uploadedBy)
+    {
+        var sourceId = $"sftp:{blobPath}";
+        var existing = await importRepo.GetBatchBySourceAsync(organisationId, sourceId);
+        if (existing is not null) return null;
+
+        var extension = Path.GetExtension(fileName).ToLowerInvariant().TrimStart('.');
+        var fileType  = extension is "xlsx" or "xls" or "csv" ? extension
+            : throw new ArgumentException($"Unsupported file type: {extension}");
+
+        var uploadPath = config["ImportSettings:UploadPath"] ?? Path.Combine(Path.GetTempPath(), "imports");
+        Directory.CreateDirectory(uploadPath);
+
+        var batchId  = Guid.NewGuid();
+        var tempPath = Path.Combine(uploadPath, $"{batchId}.{extension}");
+
+        var blobStream = await storageService.DownloadFileAsync(containerName, blobPath);
+        await using (var fs = File.Create(tempPath))
+            await blobStream.CopyToAsync(fs);
+
+        (string[] headers, int rowCount) = fileType == "csv"
+            ? ParseCsvHeadersFromPath(tempPath)
+            : ParseXlsxHeadersFromPath(tempPath);
+
+        var fingerprint   = ComputeFingerprint(headers);
+        var savedMappings = (await importRepo.GetSavedMappingsAsync(organisationId, fingerprint)).ToList();
+        var fieldDefs     = (await fieldRepo.GetByOrganizationIdAsync(organisationId)).ToList();
+        var matches       = await AutoMatchHeaders(headers, fieldDefs, savedMappings, organisationId);
+
+        foreach (var match in matches.Where(m => m.MatchStatus == "unmatched"))
+        {
+            var norm     = match.CsvHeader.Trim().ToLowerInvariant();
+            var staging  = await stagingRepo.GetByHeaderAsync(organisationId, norm);
+            if (staging is null)
+                await stagingRepo.CreateAsync(new ImportColumnStaging
+                {
+                    OrganizationId   = organisationId,
+                    CsvHeader        = match.CsvHeader,
+                    HeaderNormalized = norm,
+                    Status           = "unmatched",
+                });
+            else
+                await stagingRepo.TouchAsync(staging.StagingId);
+        }
+
+        var batch = new ImportBatch
+        {
+            BatchId           = batchId,
+            OrganizationId    = organisationId,
+            FileName          = fileName,
+            FileType          = fileType,
+            FileHeaders       = JsonSerializer.Serialize(headers),
+            HeaderFingerprint = fingerprint,
+            FileStoragePath   = tempPath,
+            TotalRows         = rowCount,
+            Status            = "pending",
+            DuplicateStrategy = "skip",
+            UploadedBy        = uploadedBy,
+            Notes             = sourceId,
+        };
+        await importRepo.CreateBatchAsync(batch);
+
+        log.LogInformation("Registered blob {BlobPath} as import batch {BatchId} for org {OrgId}",
+            blobPath, batchId, organisationId);
+        return MapBatch(batch);
     }
 
     public async Task<PagedResult<ImportBatchDto>> GetBatchesAsync(Guid organisationId, int page = 1, int pageSize = 20)
@@ -341,14 +583,173 @@ public class ImportService(
         });
     }
 
+    public async Task CancelAsync(Guid batchId)
+    {
+        var batch = await importRepo.GetBatchByIdAsync(batchId)
+            ?? throw new KeyNotFoundException($"Import batch {batchId} not found.");
+
+        batch.Status      = "cancelled";
+        batch.CompletedAt = DateTime.UtcNow;
+        await importRepo.UpdateBatchAsync(batch);
+    }
+
+    public async Task ResetBatchAsync(Guid batchId, string targetStatus = "pending")
+    {
+        if (targetStatus is not ("pending" or "preview"))
+            throw new ArgumentException("targetStatus must be 'pending' or 'preview'.");
+
+        var batch = await importRepo.GetBatchByIdAsync(batchId)
+            ?? throw new KeyNotFoundException($"Import batch {batchId} not found.");
+
+        if (batch.Status == "importing")
+            throw new InvalidOperationException("Cannot reset a batch that is actively importing.");
+
+        await importRepo.ClearErrorsAsync(batchId);
+
+        batch.Status             = targetStatus;
+        batch.ImportedRows       = 0;
+        batch.SkippedRows        = 0;
+        batch.ErrorRows          = 0;
+        batch.ExecutionStartedAt = null;
+        batch.CompletedAt        = null;
+        if (targetStatus == "pending")
+            batch.MappingSavedAt = null;
+
+        await importRepo.UpdateBatchAsync(batch);
+        log.LogInformation("Import batch {BatchId} reset to status '{Status}'", batchId, targetStatus);
+    }
+
+    public async Task DeleteAsync(Guid batchId)
+    {
+        var batch = await importRepo.GetBatchByIdAsync(batchId)
+            ?? throw new KeyNotFoundException($"Import batch {batchId} not found.");
+
+        // Remove the uploaded file from disk if it exists
+        if (!string.IsNullOrWhiteSpace(batch.FileStoragePath) && File.Exists(batch.FileStoragePath))
+        {
+            try { File.Delete(batch.FileStoragePath); }
+            catch (Exception ex) { log.LogWarning(ex, "Could not delete import file {Path}", batch.FileStoragePath); }
+        }
+
+        await importRepo.DeleteBatchAsync(batchId);
+    }
+
+    public async Task<UploadImportResponseDto> ResumeAsync(Guid batchId)
+    {
+        var batch = await importRepo.GetBatchByIdAsync(batchId)
+            ?? throw new KeyNotFoundException($"Import batch {batchId} not found.");
+
+        var headers = JsonSerializer.Deserialize<string[]>(batch.FileHeaders) ?? [];
+
+        if (batch.Status == "pending")
+        {
+            // Re-run auto-matching so the user sees the same pre-fills they'd get on a fresh upload
+            var fieldDefs    = (await fieldRepo.GetByOrganizationIdAsync(batch.OrganizationId)).ToList();
+            var savedMappings = (await importRepo.GetSavedMappingsAsync(batch.OrganizationId, batch.HeaderFingerprint)).ToList();
+            var matches      = await AutoMatchHeaders(headers, fieldDefs, savedMappings, batch.OrganizationId);
+
+            return new UploadImportResponseDto
+            {
+                BatchId          = batch.BatchId,
+                FileName         = batch.FileName,
+                Headers          = headers,
+                RowCount         = batch.TotalRows,
+                HasSavedMappings = savedMappings.Count > 0,
+                ColumnMatches    = matches,
+            };
+        }
+
+        // preview / mapping_saved — reconstruct from persisted mappings
+        var savedMaps   = (await importRepo.GetMappingsByBatchIdAsync(batchId)).ToList();
+        var outputs     = (await importRepo.GetMappingOutputsByBatchIdAsync(batchId)).ToList();
+        var outputsByMapping = outputs.GroupBy(o => o.MappingId).ToDictionary(g => g.Key, g => g.ToList());
+
+        // Group by (csvHeader, csvColumnIndex) so multi-destination rows come back as extras
+        var grouped = savedMaps
+            .GroupBy(m => (m.CsvHeader, m.CsvColumnIndex))
+            .ToList();
+
+        var fieldDefs2 = (await fieldRepo.GetByOrganizationIdAsync(batch.OrganizationId)).ToList();
+
+        var columnMatches = grouped.Select(g =>
+        {
+            var primary = g.First();
+            var outs    = outputsByMapping.TryGetValue(primary.MappingId, out var o) ? o : [];
+
+            var fd = primary.FieldDefinitionId.HasValue
+                ? fieldDefs2.FirstOrDefault(f => f.FieldDefinitionId == primary.FieldDefinitionId.Value)
+                : null;
+
+            return new ColumnMatchResultDto
+            {
+                ColumnIndex       = primary.CsvColumnIndex,
+                CsvHeader         = primary.CsvHeader,
+                MatchStatus       = "matched",
+                DestinationTable  = primary.DestinationTable,
+                DestinationField  = primary.DestinationField,
+                FieldDefinitionId = primary.FieldDefinitionId,
+                TransformType     = primary.TransformType ?? "direct",
+                FieldLabel        = fd?.FieldLabel,
+                IsAutoMatched     = primary.IsAutoMatched,
+                Outputs           = outs.Select(o => new ColumnMappingOutputDto
+                {
+                    OutputToken       = o.OutputToken,
+                    DestinationTable  = o.DestinationTable,
+                    DestinationField  = o.DestinationField,
+                    FieldDefinitionId = o.FieldDefinitionId,
+                    SortOrder         = o.SortOrder,
+                }),
+            };
+        });
+
+        // Extra destinations: remaining rows in each group beyond the first
+        // They're appended as separate ColumnMatchResultDtos — the UI re-groups them via csvHeader
+        var extraMatches = grouped.SelectMany(g =>
+            g.Skip(1).Select(e =>
+            {
+                var fdE = e.FieldDefinitionId.HasValue
+                    ? fieldDefs2.FirstOrDefault(f => f.FieldDefinitionId == e.FieldDefinitionId.Value)
+                    : null;
+                return new ColumnMatchResultDto
+                {
+                    ColumnIndex       = e.CsvColumnIndex,
+                    CsvHeader         = e.CsvHeader,
+                    MatchStatus       = "extra",
+                    DestinationTable  = e.DestinationTable,
+                    DestinationField  = e.DestinationField,
+                    FieldDefinitionId = e.FieldDefinitionId,
+                    TransformType     = e.TransformType ?? "direct",
+                    FieldLabel        = fdE?.FieldLabel,
+                    IsAutoMatched     = false,
+                };
+            })
+        );
+
+        return new UploadImportResponseDto
+        {
+            BatchId          = batch.BatchId,
+            FileName         = batch.FileName,
+            Headers          = headers,
+            RowCount         = batch.TotalRows,
+            HasSavedMappings = true,
+            ColumnMatches    = columnMatches.Concat(extraMatches),
+        };
+    }
+
     // ------------------------------------------------------------------
     // Private helpers
     // ------------------------------------------------------------------
 
     private static (string[] Headers, int RowCount) ParseCsvHeaders(IFormFile file)
     {
-        using var reader    = new StreamReader(file.OpenReadStream());
-        using var csv       = new CsvReader(reader, CultureInfo.InvariantCulture);
+        using var stream = file.OpenReadStream();
+        return ParseCsvHeaders(stream);
+    }
+
+    private static (string[] Headers, int RowCount) ParseCsvHeaders(Stream stream)
+    {
+        using var reader = new StreamReader(stream);
+        using var csv    = new CsvReader(reader, CultureInfo.InvariantCulture);
         csv.Read();
         csv.ReadHeader();
         var headers = csv.HeaderRecord!;
@@ -357,15 +758,41 @@ public class ImportService(
         return (headers, rows);
     }
 
+    private static (string[] Headers, int RowCount) ParseCsvHeadersFromPath(string path)
+    {
+        using var stream = File.OpenRead(path);
+        return ParseCsvHeaders(stream);
+    }
+
     private static (string[] Headers, int RowCount) ParseXlsxHeaders(IFormFile file)
     {
-        using var wb    = new XLWorkbook(file.OpenReadStream());
+        using var stream = file.OpenReadStream();
+        return ParseXlsxHeaders(stream);
+    }
+
+    private static (string[] Headers, int RowCount) ParseXlsxHeaders(Stream stream)
+    {
+        using var wb    = new XLWorkbook(stream);
         var ws          = wb.Worksheets.First();
         var headerRow   = ws.FirstRowUsed();
         if (headerRow is null) return ([], 0);
-        var headers     = headerRow.CellsUsed().Select(c => c.GetString()).ToArray();
-        var rowCount    = ws.RowsUsed().Count() - 1;
+
+        // Use actual column number as the array index so gaps in the header row
+        // don't cause the sequence position to diverge from the absolute column.
+        var cells   = headerRow.CellsUsed().ToList();
+        var maxCol  = cells.Count > 0 ? cells.Max(c => c.Address.ColumnNumber) : 0;
+        var headers = new string[maxCol];
+        foreach (var cell in cells)
+            headers[cell.Address.ColumnNumber - 1] = cell.GetString();
+
+        var rowCount = ws.RowsUsed().Count() - 1;
         return (headers, Math.Max(0, rowCount));
+    }
+
+    private static (string[] Headers, int RowCount) ParseXlsxHeadersFromPath(string path)
+    {
+        using var stream = File.OpenRead(path);
+        return ParseXlsxHeaders(stream);
     }
 
     private static IEnumerable<string?[]> ReadFileRows(string path, string fileType, int maxRows = int.MaxValue)
@@ -392,12 +819,15 @@ public class ImportService(
         {
             using var wb    = new XLWorkbook(path);
             var ws          = wb.Worksheets.First();
-            var colCount    = ws.FirstRowUsed()?.CellsUsed().Count() ?? 0;
+            // Use the max absolute column number from the header row so data row arrays
+            // use the same 0-based indices as ParseXlsxHeaders (column N → index N-1).
+            var headerCells = ws.FirstRowUsed()?.CellsUsed().ToList() ?? [];
+            var maxCol      = headerCells.Count > 0 ? headerCells.Max(c => c.Address.ColumnNumber) : 0;
             int count       = 0;
             foreach (var row in ws.RowsUsed().Skip(1))
             {
                 if (count >= maxRows) break;
-                yield return Enumerable.Range(1, colCount).Select(i => (string?)row.Cell(i).GetString()).ToArray();
+                yield return Enumerable.Range(1, maxCol).Select(i => (string?)row.Cell(i).GetString()).ToArray();
                 count++;
             }
         }
@@ -426,9 +856,10 @@ public class ImportService(
                     ColumnIndex         = i,
                     CsvHeader           = header,
                     MatchStatus         = "matched",
-                    MappingType         = saved.MappingType,
-                    CustomerFieldName   = saved.CustomerFieldName,
+                    DestinationTable    = saved.DestinationTable,
+                    DestinationField    = saved.DestinationField,
                     FieldDefinitionId   = saved.FieldDefinitionId,
+                    TransformType       = saved.TransformType,
                     FieldLabel          = fd?.FieldLabel,
                     IsAutoMatched       = false,
                 });
@@ -444,8 +875,60 @@ public class ImportService(
                     ColumnIndex         = i,
                     CsvHeader           = header,
                     MatchStatus         = "matched",
-                    MappingType         = "customer_field",
-                    CustomerFieldName   = custField,
+                    DestinationTable    = "customer",
+                    DestinationField    = custField,
+                    TransformType       = "direct",
+                    IsAutoMatched       = true,
+                });
+                continue;
+            }
+
+            // Address field match (case-insensitive)
+            var addrField = AddressFields.FirstOrDefault(f => f.Equals(trimmed, StringComparison.OrdinalIgnoreCase));
+            if (addrField is not null)
+            {
+                result.Add(new ColumnMatchResultDto
+                {
+                    ColumnIndex         = i,
+                    CsvHeader           = header,
+                    MatchStatus         = "matched",
+                    DestinationTable    = "customer_address",
+                    DestinationField    = addrField,
+                    TransformType       = "direct",
+                    IsAutoMatched       = true,
+                });
+                continue;
+            }
+
+            // Email field match (case-insensitive)
+            var emailField = EmailFields.FirstOrDefault(f => f.Equals(trimmed, StringComparison.OrdinalIgnoreCase));
+            if (emailField is not null)
+            {
+                result.Add(new ColumnMatchResultDto
+                {
+                    ColumnIndex         = i,
+                    CsvHeader           = header,
+                    MatchStatus         = "matched",
+                    DestinationTable    = "customer_email",
+                    DestinationField    = emailField,
+                    TransformType       = "direct",
+                    IsAutoMatched       = true,
+                });
+                continue;
+            }
+
+            // Phone field match (case-insensitive)
+            var phoneField = PhoneFields.FirstOrDefault(f => f.Equals(trimmed, StringComparison.OrdinalIgnoreCase));
+            if (phoneField is not null)
+            {
+                result.Add(new ColumnMatchResultDto
+                {
+                    ColumnIndex         = i,
+                    CsvHeader           = header,
+                    MatchStatus         = "matched",
+                    DestinationTable    = "customer_phone",
+                    DestinationField    = phoneField,
+                    TransformType       = "direct",
                     IsAutoMatched       = true,
                 });
                 continue;
@@ -460,8 +943,9 @@ public class ImportService(
                     ColumnIndex         = i,
                     CsvHeader           = header,
                     MatchStatus         = "matched",
-                    MappingType         = "field_definition",
+                    DestinationTable    = "field_value",
                     FieldDefinitionId   = byKey.FieldDefinitionId,
+                    TransformType       = "direct",
                     FieldLabel          = byKey.FieldLabel,
                     IsAutoMatched       = true,
                 });
@@ -477,8 +961,9 @@ public class ImportService(
                     ColumnIndex         = i,
                     CsvHeader           = header,
                     MatchStatus         = "matched",
-                    MappingType         = "field_definition",
+                    DestinationTable    = "field_value",
                     FieldDefinitionId   = byLabel.FieldDefinitionId,
+                    TransformType       = "direct",
                     FieldLabel          = byLabel.FieldLabel,
                     IsAutoMatched       = true,
                 });
@@ -490,6 +975,13 @@ public class ImportService(
             var staging = await stagingRepo.GetByHeaderAsync(organisationId, norm);
             if (staging?.Status == "resolved" && staging.MappingType is not null)
             {
+                // Staging table still uses legacy MappingType/CustomerFieldName — translate on read
+                var stagingDestTable = staging.MappingType switch
+                {
+                    "customer_field"   => "customer",
+                    "field_definition" => "field_value",
+                    _                  => "skip",
+                };
                 var fd = staging.FieldDefinitionId.HasValue
                     ? fieldDefs.FirstOrDefault(f => f.FieldDefinitionId == staging.FieldDefinitionId.Value)
                     : null;
@@ -498,9 +990,10 @@ public class ImportService(
                     ColumnIndex         = i,
                     CsvHeader           = header,
                     MatchStatus         = "matched",
-                    MappingType         = staging.MappingType,
-                    CustomerFieldName   = staging.CustomerFieldName,
+                    DestinationTable    = stagingDestTable,
+                    DestinationField    = staging.CustomerFieldName,
                     FieldDefinitionId   = staging.FieldDefinitionId,
+                    TransformType       = "direct",
                     FieldLabel          = fd?.FieldLabel,
                     IsAutoMatched       = false,
                 });
@@ -519,6 +1012,112 @@ public class ImportService(
         return result;
     }
 
+    public async Task<ValueMappingResponseDto> GetValueMappingAsync(Guid batchId)
+    {
+        var batch = await importRepo.GetBatchByIdAsync(batchId)
+            ?? throw new KeyNotFoundException($"Import batch {batchId} not found.");
+
+        var mappings = (await importRepo.GetMappingsByBatchIdAsync(batchId)).ToList();
+
+        // Only dropdown/multiselect field_value mappings need value-level resolution
+        var relevantMappings = mappings
+            .Where(m => m.DestinationTable == "field_value" && m.FieldDefinitionId.HasValue)
+            .ToList();
+
+        if (relevantMappings.Count == 0)
+            return new ValueMappingResponseDto { HasUnresolved = false };
+
+        var fieldDefs = await GetFieldDefsForBatch(relevantMappings);
+        var optionMappings = relevantMappings
+            .Where(m => fieldDefs.TryGetValue(m.FieldDefinitionId!.Value, out var fd)
+                        && fd.FieldType is "dropdown" or "multiselect")
+            .ToList();
+
+        if (optionMappings.Count == 0)
+            return new ValueMappingResponseDto { HasUnresolved = false };
+
+        // Collect distinct values per column from the file
+        var columnIndices = optionMappings.Select(m => m.CsvColumnIndex).ToHashSet();
+        var distinctValues = new Dictionary<int, HashSet<string>>();
+        foreach (var idx in columnIndices)
+            distinctValues[idx] = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var row in ReadFileRows(batch.FileStoragePath!, batch.FileType!))
+        {
+            foreach (var idx in columnIndices)
+            {
+                var v = idx < row.Length ? row[idx]?.Trim() : null;
+                if (!string.IsNullOrEmpty(v))
+                    distinctValues[idx].Add(v);
+            }
+        }
+
+        // Load options and existing aliases for the relevant fields
+        var fieldIds = optionMappings.Select(m => m.FieldDefinitionId!.Value).Distinct().ToList();
+        var existingAliases = (await aliasRepo.GetByOrganizationAndFieldsAsync(batch.OrganizationId, fieldIds)).ToList();
+
+        var optionsByField = new Dictionary<Guid, List<string>>();
+        foreach (var id in fieldIds)
+        {
+            var effectiveId = fieldDefs.TryGetValue(id, out var fd) && fd.OptionsSourceFieldId.HasValue
+                ? fd.OptionsSourceFieldId.Value
+                : id;
+            var opts = await fieldOptionRepo.GetByFieldIdAsync(effectiveId);
+            optionsByField[id] = opts.SelectMany(o => new[] { o.OptionKey, o.OptionLabel })
+                                     .Where(v => !string.IsNullOrEmpty(v))
+                                     .Distinct(StringComparer.OrdinalIgnoreCase)
+                                     .ToList();
+        }
+
+        var columns = new List<ValueMappingColumnDto>();
+        foreach (var m in optionMappings)
+        {
+            var fieldDefId  = m.FieldDefinitionId!.Value;
+            var fd          = fieldDefs[fieldDefId];
+            var known       = optionsByField.GetValueOrDefault(fieldDefId, []);
+            var fieldAliases = existingAliases
+                .Where(a => a.FieldDefinitionId == fieldDefId)
+                .Select(a => new FieldOptionAliasDto
+                {
+                    Id                = a.Id,
+                    OrganizationId    = a.OrganizationId,
+                    FieldDefinitionId = a.FieldDefinitionId,
+                    AliasValue        = a.AliasValue,
+                    CanonicalValue    = a.CanonicalValue,
+                    CreatedDt         = a.CreatedDt,
+                })
+                .ToList();
+
+            var aliasedValues = new HashSet<string>(
+                fieldAliases.Select(a => a.AliasValue), StringComparer.OrdinalIgnoreCase);
+
+            var rawValues    = distinctValues.GetValueOrDefault(m.CsvColumnIndex, []);
+            var unresolved   = rawValues
+                .Where(v => !known.Contains(v, StringComparer.OrdinalIgnoreCase)
+                            && !aliasedValues.Contains(v))
+                .OrderBy(v => v)
+                .ToList();
+
+            columns.Add(new ValueMappingColumnDto
+            {
+                CsvHeader         = m.CsvHeader,
+                CsvColumnIndex    = m.CsvColumnIndex,
+                FieldDefinitionId = fieldDefId,
+                FieldLabel        = fd.FieldLabel,
+                FieldType         = fd.FieldType,
+                KnownOptions      = known,
+                ExistingAliases   = fieldAliases,
+                UnresolvedValues  = unresolved,
+            });
+        }
+
+        return new ValueMappingResponseDto
+        {
+            HasUnresolved = columns.Any(c => c.UnresolvedValues.Count > 0),
+            Columns       = columns,
+        };
+    }
+
     private async Task<Dictionary<Guid, FieldDefinition>> GetFieldDefsForBatch(List<ImportColumnMapping> mappings)
     {
         var ids = mappings.Where(m => m.FieldDefinitionId.HasValue).Select(m => m.FieldDefinitionId!.Value).Distinct();
@@ -531,30 +1130,188 @@ public class ImportService(
         return result;
     }
 
-    private static (string? FirstName, string? LastName, string? MiddleName, string? Email, string? OriginalId)
+    private static (string? FirstName, string? LastName, string? MiddleName, string? MaidenName,
+                    DateOnly? DateOfBirth, string? Email, string? Phone, string? OriginalId)
         ExtractCustomerFields(string?[] row, List<ImportColumnMapping> mappings)
     {
-        string? fn = null, ln = null, mn = null, email = null, origId = null;
-        foreach (var m in mappings.Where(m => m.MappingType == "customer_field"))
+        string? fn = null, ln = null, mn = null, maiden = null, email = null, phone = null, origId = null;
+        DateOnly? dob = null;
+
+        foreach (var m in mappings.Where(m => m.DestinationTable == "customer"))
         {
-            var value = m.CsvColumnIndex < row.Length ? row[m.CsvColumnIndex]?.Trim() : null;
-            switch (m.CustomerFieldName)
+            var rawValue = m.CsvColumnIndex < row.Length ? row[m.CsvColumnIndex]?.Trim() : null;
+
+            if (m.TransformType == "split_full_name")
             {
-                case "FirstName":   fn      = value; break;
-                case "LastName":    ln      = value; break;
-                case "MiddleName":  mn      = value; break;
-                case "Email":       email   = value?.ToLowerInvariant(); break;
-                case "OriginalId":  origId  = value; break;
+                var (pFirst, pMiddle, pLast, _, _) = FullNameParser.Parse(rawValue);
+                foreach (var o in m.Outputs)
+                {
+                    if (o.DestinationTable != "customer") continue;
+                    var parsed = o.OutputToken switch
+                    {
+                        "FirstName"  => pFirst,
+                        "MiddleName" => pMiddle,
+                        "LastName"   => pLast,
+                        _            => null,
+                    };
+                    ApplyCustomerField(o.DestinationField, parsed, ref fn, ref ln, ref mn, ref maiden, ref email, ref phone, ref origId, ref dob);
+                }
+            }
+            else
+            {
+                ApplyCustomerField(m.DestinationField, rawValue, ref fn, ref ln, ref mn, ref maiden, ref email, ref phone, ref origId, ref dob);
             }
         }
-        return (fn, ln, mn, email, origId);
+        return (fn, ln, mn, maiden, dob, email, phone, origId);
+    }
+
+    private static void ApplyCustomerField(
+        string? fieldName, string? value,
+        ref string? fn, ref string? ln, ref string? mn, ref string? maiden,
+        ref string? email, ref string? phone, ref string? origId, ref DateOnly? dob)
+    {
+        switch (fieldName)
+        {
+            case "FirstName":   fn      = value; break;
+            case "LastName":    ln      = value; break;
+            case "MiddleName":  mn      = value; break;
+            case "MaidenName":  maiden  = value; break;
+            case "Email":       email   = value?.ToLowerInvariant(); break;
+            case "Phone":       phone   = string.IsNullOrWhiteSpace(value) ? null
+                                            : Regex.Replace(value, @"\D", ""); break;
+            case "OriginalId":  origId  = value; break;
+            case "DateOfBirth":
+                if (!string.IsNullOrWhiteSpace(value) && DateOnly.TryParse(value, out var parsed))
+                    dob = parsed;
+                break;
+        }
+    }
+
+    private static CustomerAddress? ExtractAddressFields(string?[] row, List<ImportColumnMapping> mappings)
+    {
+        var addrMappings = mappings.Where(m => m.DestinationTable == "customer_address").ToList();
+        if (addrMappings.Count == 0) return null;
+
+        var addr = new CustomerAddress { AddressType = "primary" };
+        bool hasData = false;
+
+        foreach (var m in addrMappings)
+        {
+            var value = m.CsvColumnIndex < row.Length ? row[m.CsvColumnIndex]?.Trim() : null;
+            if (string.IsNullOrWhiteSpace(value)) continue;
+            hasData = true;
+
+            if (m.TransformType == "split_full_address")
+            {
+                var parsed = AddressParser.Parse(value);
+                foreach (var o in m.Outputs)
+                {
+                    if (o.DestinationTable != "customer_address") continue;
+                    var tokenValue = o.OutputToken switch
+                    {
+                        "AddressLine1" => parsed.AddressLine1,
+                        "AddressLine2" => parsed.AddressLine2,
+                        "City"         => parsed.City,
+                        "State"        => parsed.State,
+                        "PostalCode"   => parsed.PostalCode,
+                        "Country"      => parsed.Country,
+                        _              => null,
+                    };
+                    ApplyAddressField(o.DestinationField, tokenValue, addr);
+                }
+            }
+            else
+            {
+                ApplyAddressField(m.DestinationField, value, addr);
+            }
+        }
+
+        // All four NOT NULL columns must be present or the INSERT will fail
+        return hasData
+               && !string.IsNullOrWhiteSpace(addr.AddressLine1)
+               && !string.IsNullOrWhiteSpace(addr.City)
+               && !string.IsNullOrWhiteSpace(addr.State)
+               && !string.IsNullOrWhiteSpace(addr.PostalCode)
+            ? addr
+            : null;
+    }
+
+    private static void ApplyAddressField(string? field, string? value, CustomerAddress addr)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return;
+        switch (field)
+        {
+            case "AddressLine1": addr.AddressLine1 = value; break;
+            case "AddressLine2": addr.AddressLine2 = value; break;
+            case "City":         addr.City         = value; break;
+            case "State":        addr.State        = value.Length > 2
+                                     ? StateLookup.ToCode(value) ?? value[..2].ToUpper()
+                                     : value.ToUpper(); break;
+            case "PostalCode":   addr.PostalCode   = value; break;
+            case "Country":      addr.Country      = value.Length > 2 ? value[..2].ToUpper() : value.ToUpper(); break;
+            case "AddressType":  addr.AddressType  = value; break;
+            case "Latitude":
+                if (double.TryParse(value, out var lat)) addr.Latitude = lat;
+                break;
+            case "Longitude":
+                if (double.TryParse(value, out var lng)) addr.Longitude = lng;
+                break;
+        }
+    }
+
+    private static CustomerEmail? ExtractEmailFields(string?[] row, List<ImportColumnMapping> mappings)
+    {
+        var emailMappings = mappings.Where(m => m.DestinationTable == "customer_email").ToList();
+        if (emailMappings.Count == 0) return null;
+
+        var email = new CustomerEmail { EmailType = "personal", IsPrimary = false };
+        bool hasData = false;
+
+        foreach (var m in emailMappings)
+        {
+            var value = m.CsvColumnIndex < row.Length ? row[m.CsvColumnIndex]?.Trim() : null;
+            if (string.IsNullOrWhiteSpace(value)) continue;
+            switch (m.DestinationField)
+            {
+                case null:
+                case "EmailAddress": email.EmailAddress = value.ToLowerInvariant(); hasData = true; break;
+                case "EmailType":    email.EmailType    = value.ToLowerInvariant(); break;
+                case "IsPrimary":    email.IsPrimary    = value is "1" or "true" or "yes"; break;
+            }
+        }
+
+        return hasData && !string.IsNullOrWhiteSpace(email.EmailAddress) ? email : null;
+    }
+
+    private static CustomerPhone? ExtractPhoneFields(string?[] row, List<ImportColumnMapping> mappings)
+    {
+        var phoneMappings = mappings.Where(m => m.DestinationTable == "customer_phone").ToList();
+        if (phoneMappings.Count == 0) return null;
+
+        var phone = new CustomerPhone { PhoneType = "mobile", IsPrimary = false };
+        bool hasData = false;
+
+        foreach (var m in phoneMappings)
+        {
+            var value = m.CsvColumnIndex < row.Length ? row[m.CsvColumnIndex]?.Trim() : null;
+            if (string.IsNullOrWhiteSpace(value)) continue;
+            switch (m.DestinationField)
+            {
+                case null:
+                case "PhoneNumber": phone.PhoneNumber = Regex.Replace(value, @"\D", ""); hasData = true; break;
+                case "PhoneType":   phone.PhoneType   = value.ToLowerInvariant(); break;
+                case "IsPrimary":   phone.IsPrimary   = value is "1" or "true" or "yes"; break;
+            }
+        }
+
+        return hasData && !string.IsNullOrWhiteSpace(phone.PhoneNumber) ? phone : null;
     }
 
     private static List<(Guid FieldDefinitionId, string? Value)> ExtractFieldValues(
         string?[] row, List<ImportColumnMapping> mappings)
     {
         var result = new List<(Guid, string?)>();
-        foreach (var m in mappings.Where(m => m.MappingType == "field_definition" && m.FieldDefinitionId.HasValue))
+        foreach (var m in mappings.Where(m => m.DestinationTable == "field_value" && m.FieldDefinitionId.HasValue))
         {
             var value = m.CsvColumnIndex < row.Length ? row[m.CsvColumnIndex]?.Trim() : null;
             result.Add((m.FieldDefinitionId!.Value, value));
@@ -565,18 +1322,38 @@ public class ImportService(
     private static (string Status, string? Message) ValidateRow(
         string?[] row, List<ImportColumnMapping> mappings, Dictionary<Guid, FieldDefinition> fieldDefs)
     {
-        foreach (var m in mappings.Where(m => m.IsRequired || m.MappingType == "customer_field"))
+        foreach (var m in mappings.Where(m => m.DestinationTable == "customer" && m.TransformType == "direct"))
         {
             var value = m.CsvColumnIndex < row.Length ? row[m.CsvColumnIndex]?.Trim() : null;
-            if (string.IsNullOrEmpty(value))
-            {
-                if (m.MappingType == "customer_field" && m.CustomerFieldName is "FirstName" or "LastName")
-                    return ("error", $"{m.CustomerFieldName} is required.");
-                if (m.IsRequired)
-                    return ("error", $"'{m.CsvHeader}' is required but empty.");
-            }
+            if (string.IsNullOrEmpty(value) && m.DestinationField is "FirstName" or "LastName" or "OriginalId")
+                return ("error", $"{m.DestinationField} is required.");
         }
+
         return ("ok", null);
+    }
+
+    private static (string[] Missing, string[] New) DetectSchemaDrift(
+        string[] currentHeaders, List<SavedColumnMapping> savedMappings)
+    {
+        if (savedMappings.Count == 0)
+            return ([], []);
+
+        var savedHeaders    = savedMappings.Select(s => s.CsvHeader.Trim()).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var currentSet      = currentHeaders.Select(h => h.Trim()).ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        // Columns that were previously mapped (not skipped) but are missing now
+        var missing = savedMappings
+            .Where(s => s.DestinationTable != "skip" && !currentSet.Contains(s.CsvHeader.Trim()))
+            .Select(s => s.CsvHeader)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        // Columns in the current file that weren't in the saved mapping
+        var newCols = currentHeaders
+            .Where(h => !savedHeaders.Contains(h.Trim()))
+            .ToArray();
+
+        return (missing, newCols);
     }
 
     private static string ComputeFingerprint(string[] headers)
@@ -589,12 +1366,210 @@ public class ImportService(
     private static string GenerateCustomerCode(string abbreviation)
         => $"{abbreviation}-{Ulid.NewUlid().ToString()[..10]}";
 
+    // ------------------------------------------------------------------
+    // Name / state helpers
+    // ------------------------------------------------------------------
+
+    private static class FullNameParser
+    {
+        private static readonly Regex CredentialRx = new(
+            @"^(?:M\.D\.|D\.O\.|Ph\.D\.|M\.P\.H\.|M\.B\.A\.|D\.D\.S\.|D\.V\.M\.|R\.N\.|N\.P\.|Esq\.?)$",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+        private static readonly Regex SuffixRx = new(
+            @"^(?:Jr\.|Sr\.|III|II|IV)$",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+        private static readonly Regex DeceasedRx = new(
+            @"\s*\(deceased\)\s*", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+        public static (string? First, string? Middle, string? Last, string? Suffix, string? Credentials)
+            Parse(string? fullName)
+        {
+            if (string.IsNullOrWhiteSpace(fullName))
+                return (null, null, null, null, null);
+
+            // Split on " , " to separate name from trailing credential/suffix tokens
+            var parts = fullName.Split(" , ", StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
+
+            string? suffix = null;
+            var credParts  = new List<string>();
+            while (parts.Count > 1)
+            {
+                var tail = parts[^1];
+                if (CredentialRx.IsMatch(tail))      { credParts.Insert(0, tail); parts.RemoveAt(parts.Count - 1); }
+                else if (SuffixRx.IsMatch(tail))     { suffix = tail;              parts.RemoveAt(parts.Count - 1); }
+                else break;
+            }
+
+            var namePart = DeceasedRx.Replace(string.Join(" ", parts), " ").Trim();
+            var words    = namePart.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            var creds    = credParts.Count > 0 ? string.Join(", ", credParts) : null;
+
+            return words.Length switch
+            {
+                0 => (null,     null,                              null,       suffix, creds),
+                1 => (words[0], null,                              null,       suffix, creds),
+                2 => (words[0], null,                              words[1],   suffix, creds),
+                _ => (words[0], string.Join(" ", words[1..^1]),    words[^1],  suffix, creds),
+            };
+        }
+    }
+
+    private static class AddressParser
+    {
+        // Matches "IL 62701", "IL62701", "IL 62701-1234"
+        private static readonly Regex StateZipRx = new(
+            @"^([A-Za-z]{2})\s*(\d{5}(?:-\d{4})?)$",
+            RegexOptions.Compiled);
+
+        private static readonly Regex ZipRx = new(
+            @"^\d{5}(?:-\d{4})?$",
+            RegexOptions.Compiled);
+
+        private static readonly HashSet<string> StateCodes = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA",
+            "KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ",
+            "NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT",
+            "VA","WA","WV","WI","WY","DC","PR","VI","GU","AS","MP"
+        };
+
+        // Only unambiguous country tokens — "CA" (Canada) is excluded to avoid conflict with
+        // the California state abbreviation; "AU" excluded for same reason (Australia vs. no-state-code).
+        private static readonly HashSet<string> CountryTokens = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "USA","US","UNITED STATES","UNITED STATES OF AMERICA",
+            "CANADA","UK","UNITED KINGDOM","AUSTRALIA","MEXICO","MEX"
+        };
+
+        public record ParsedAddress(
+            string? AddressLine1, string? AddressLine2,
+            string? City, string? State, string? PostalCode, string? Country);
+
+        public static ParsedAddress Parse(string? raw)
+        {
+            if (string.IsNullOrWhiteSpace(raw))
+                return new ParsedAddress(null, null, null, null, null, null);
+
+            var parts = raw.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+
+            string? country = null;
+            if (parts.Length > 0 && CountryTokens.Contains(parts[^1]))
+            {
+                country = parts[^1];
+                parts   = parts[..^1];
+            }
+
+            return parts.Length switch
+            {
+                0 => new ParsedAddress(null, null, null, null, null, country),
+                1 => ParseOnePart(parts[0], country),
+                2 => ParseTwoParts(parts[0], parts[1], country),
+                3 => ParseThreeParts(parts[0], parts[1], parts[2], country),
+                _ => ParseManyParts(parts, country),
+            };
+        }
+
+        // "123 Main St Springfield IL 62701"
+        private static ParsedAddress ParseOnePart(string part, string? country)
+        {
+            var words = part.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (words.Length >= 2)
+            {
+                if (ZipRx.IsMatch(words[^1]) && StateCodes.Contains(words[^2]))
+                    return new ParsedAddress(string.Join(' ', words[..^2]), null, null,
+                        words[^2].ToUpper(), words[^1], country);
+
+                var m = StateZipRx.Match(words[^1]);
+                if (m.Success)
+                    return new ParsedAddress(string.Join(' ', words[..^1]), null, null,
+                        m.Groups[1].Value.ToUpper(), m.Groups[2].Value, country);
+            }
+            return new ParsedAddress(part, null, null, null, null, country);
+        }
+
+        // "123 Main St, Springfield IL 62701"
+        private static ParsedAddress ParseTwoParts(string addr, string cityStateZip, string? country)
+        {
+            var words = cityStateZip.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (words.Length >= 3 && ZipRx.IsMatch(words[^1]) && StateCodes.Contains(words[^2]))
+                return new ParsedAddress(addr, null,
+                    string.Join(' ', words[..^2]), words[^2].ToUpper(), words[^1], country);
+
+            if (words.Length == 2 && StateCodes.Contains(words[0]) && ZipRx.IsMatch(words[1]))
+                return new ParsedAddress(addr, null, null, words[0].ToUpper(), words[1], country);
+
+            return new ParsedAddress(addr, null, cityStateZip, null, null, country);
+        }
+
+        // "123 Main St, Springfield, IL 62701"  — most common US format
+        private static ParsedAddress ParseThreeParts(string addr, string city, string stateZip, string? country)
+        {
+            var (state, zip) = SplitStateZip(stateZip);
+            return new ParsedAddress(addr, null, city, state, zip, country);
+        }
+
+        // "123 Main St, Suite 200, Springfield, IL 62701"
+        private static ParsedAddress ParseManyParts(string[] parts, string? country)
+        {
+            var (state, zip) = SplitStateZip(parts[^1]);
+            if (state != null || zip != null)
+            {
+                return new ParsedAddress(
+                    parts[0],
+                    parts.Length > 3 ? string.Join(", ", parts[1..^2]) : null,
+                    parts[^2], state, zip, country);
+            }
+            // Fallback — assign positionally
+            return new ParsedAddress(parts[0],
+                parts.Length > 3 ? parts[1] : null,
+                parts.Length >= 3 ? parts[^2] : null,
+                parts[^1], null, country);
+        }
+
+        private static (string? State, string? Zip) SplitStateZip(string s)
+        {
+            var t = s.Trim();
+            var m = StateZipRx.Match(t);
+            if (m.Success) return (m.Groups[1].Value.ToUpper(), m.Groups[2].Value);
+            if (ZipRx.IsMatch(t)) return (null, t);
+            if (t.Length == 2 && StateCodes.Contains(t)) return (t.ToUpper(), null);
+            var words = t.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
+            if (words.Length == 2 && StateCodes.Contains(words[0]) && ZipRx.IsMatch(words[1]))
+                return (words[0].ToUpper(), words[1]);
+            return (null, null);
+        }
+    }
+
+    private static class StateLookup
+    {
+        private static readonly Dictionary<string, string> _map = new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["Alabama"]="AL",["Alaska"]="AK",["Arizona"]="AZ",["Arkansas"]="AR",["California"]="CA",
+            ["Colorado"]="CO",["Connecticut"]="CT",["Delaware"]="DE",["Florida"]="FL",["Georgia"]="GA",
+            ["Hawaii"]="HI",["Idaho"]="ID",["Illinois"]="IL",["Indiana"]="IN",["Iowa"]="IA",
+            ["Kansas"]="KS",["Kentucky"]="KY",["Louisiana"]="LA",["Maine"]="ME",["Maryland"]="MD",
+            ["Massachusetts"]="MA",["Michigan"]="MI",["Minnesota"]="MN",["Mississippi"]="MS",
+            ["Missouri"]="MO",["Montana"]="MT",["Nebraska"]="NE",["Nevada"]="NV",["New Hampshire"]="NH",
+            ["New Jersey"]="NJ",["New Mexico"]="NM",["New York"]="NY",["North Carolina"]="NC",
+            ["North Dakota"]="ND",["Ohio"]="OH",["Oklahoma"]="OK",["Oregon"]="OR",["Pennsylvania"]="PA",
+            ["Rhode Island"]="RI",["South Carolina"]="SC",["South Dakota"]="SD",["Tennessee"]="TN",
+            ["Texas"]="TX",["Utah"]="UT",["Vermont"]="VT",["Virginia"]="VA",["Washington"]="WA",
+            ["West Virginia"]="WV",["Wisconsin"]="WI",["Wyoming"]="WY",["District of Columbia"]="DC",
+        };
+
+        public static string? ToCode(string fullName) =>
+            _map.TryGetValue(fullName.Trim(), out var code) ? code : null;
+    }
+
     private static ImportBatchDto MapBatch(ImportBatch b) => new()
     {
         BatchId             = b.BatchId,
         OrganizationId      = b.OrganizationId,
         FileName            = b.FileName,
         FileType            = b.FileType,
+        FileHeaders         = JsonSerializer.Deserialize<string[]>(b.FileHeaders) ?? [],
         TotalRows           = b.TotalRows,
         ImportedRows        = b.ImportedRows,
         SkippedRows         = b.SkippedRows,

@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { fmtNumber } from '@/utils/dates.js'
+import { parseOptionsCsv } from '@/utils/csv.js'
 import { useParams } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import {
@@ -18,13 +19,14 @@ import {
   useFields, useFieldOptions, useCreateField, useUpdateField,
   useSetFieldStatus, useSaveFieldOptions,
   useFormPreview, useCustomers,
+  useLibrarySections, useImportFromLibrary,
 } from '@/hooks/useApi.js'
 import {
   PageHeader, LoadingState, ErrorAlert, FieldTypeBadge,
   StatusBadge, ConfirmModal, EmptyState, useToast,
 } from '@/components/common/index.jsx'
 
-const FIELD_TYPES = ['text', 'number', 'date', 'dropdown', 'multiselect', 'boolean', 'phone']
+const FIELD_TYPES = ['text', 'number', 'date', 'dropdown', 'multiselect', 'checkbox', 'phone']
 
 const PHONE_FORMATS = ['(XXX) XXX-XXXX', 'XXX-XXX-XXXX', 'XXX.XXX.XXXX']
 
@@ -116,13 +118,13 @@ function SortableFieldRow({ field, onEdit, onOptions, onToggleStatus }) {
 }
 
 // ─── Field modal ─────────────────────────────────────────────────────────────
-function FieldModal({ organizationId, field, sections, onClose }) {
+function FieldModal({ organizationId, field, sections, fields, onClose }) {
   const toast  = useToast()
   const create = useCreateField(organizationId)
   const update = useUpdateField(organizationId)
   const isEdit = !!field
 
-  const { register, handleSubmit, watch, formState: { errors } } = useForm({
+  const { register, handleSubmit, watch, setValue, formState: { errors } } = useForm({
     defaultValues: {
       organizationId,
       sectionId:      field?.sectionId      ?? '',
@@ -141,7 +143,19 @@ function FieldModal({ organizationId, field, sections, onClose }) {
   })
 
   const fieldType = watch('fieldType')
+  const sectionId = watch('sectionId')
   const saving    = create.isPending || update.isPending
+
+  useEffect(() => {
+    if (isEdit) return
+    const sectionFields = (fields ?? []).filter(f =>
+      sectionId ? f.sectionId === sectionId : !f.sectionId
+    )
+    const nextOrder = sectionFields.length
+      ? Math.max(...sectionFields.map(f => f.displayOrder ?? 0)) + 1
+      : 1
+    setValue('displayOrder', nextOrder)
+  }, [sectionId])
 
   async function onSubmit(values) {
     const payload = {
@@ -180,11 +194,16 @@ function FieldModal({ organizationId, field, sections, onClose }) {
                 <div className="col-6">
                   <label className="form-label fw-semibold">Field Key <span className="text-danger">*</span></label>
                   <input
-                    className={`form-control ${errors.fieldKey ? 'is-invalid' : ''}`}
+                    className={`form-control font-monospace ${errors.fieldKey ? 'is-invalid' : ''}`}
                     {...register('fieldKey', { required: 'Required' })}
+                    onChange={e => {
+                      const normalized = e.target.value.toLowerCase().replace(/\s+/g, '_')
+                      setValue('fieldKey', normalized, { shouldValidate: true })
+                    }}
                     disabled={isEdit}
                   />
                   {isEdit && <div className="form-text text-muted">Key cannot be changed after creation.</div>}
+                  {!isEdit && <div className="form-text text-muted">Lowercase letters, numbers, and underscores only.</div>}
                   {errors.fieldKey && <div className="invalid-feedback">{errors.fieldKey.message}</div>}
                 </div>
                 <div className="col-6">
@@ -272,15 +291,29 @@ function FieldModal({ organizationId, field, sections, onClose }) {
 }
 
 // ─── Field options modal ─────────────────────────────────────────────────────
-function FieldOptionsModal({ fieldId, fieldLabel, onClose }) {
-  const toast    = useToast()
-  const { data: options, isLoading } = useFieldOptions(fieldId)
-  const save     = useSaveFieldOptions(fieldId)
+function FieldOptionsModal({ organizationId, field, allFields, onClose }) {
+  const toast  = useToast()
+  const update = useUpdateField(organizationId)
+  const fileRef = useRef()
+
+  const [localSourceId, setLocalSourceId] = useState(field.optionsSourceFieldId ?? '')
   const [items, setItems] = useState(null)
+
+  const sourceChanged = localSourceId !== (field.optionsSourceFieldId ?? '')
+  const isInherited   = !!localSourceId
+  const effectiveId   = localSourceId || field.fieldDefinitionId
+
+  const { data: options, isLoading } = useFieldOptions(organizationId, effectiveId)
+  const save = useSaveFieldOptions(organizationId, field.fieldDefinitionId)
+
   const opts = items ?? (options ?? [])
 
+  const sourceFields = (allFields ?? []).filter(
+    f => (f.fieldType === 'dropdown' || f.fieldType === 'multiselect') && f.fieldDefinitionId !== field.fieldDefinitionId
+  )
+
   function addItem() {
-    setItems([...opts, { optionValue: '', optionLabel: '', displayOrder: opts.length + 1, isActive: true }])
+    setItems([...opts, { optionKey: '', optionLabel: '', displayOrder: opts.length + 1, isActive: true }])
   }
   function updateItem(i, key, val) {
     setItems(opts.map((o, idx) => idx === i ? { ...o, [key]: val } : o))
@@ -288,7 +321,51 @@ function FieldOptionsModal({ fieldId, fieldLabel, onClose }) {
   function removeItem(i) {
     setItems(opts.filter((_, idx) => idx !== i))
   }
-  async function handleSave() {
+
+  function handleFileUpload(e) {
+    const file = e.target.files[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = evt => {
+      const parsed = parseOptionsCsv(evt.target.result)
+      setItems(parsed.map(r => ({ ...r, isActive: true })))
+      toast(`Loaded ${parsed.length} options from file.`)
+    }
+    reader.readAsText(file)
+    e.target.value = ''
+  }
+
+  async function handleSaveSource() {
+    try {
+      await update.mutateAsync({
+        fieldId: field.fieldDefinitionId,
+        data: {
+          fieldDefinitionId:    field.fieldDefinitionId,
+          sectionId:            field.sectionId,
+          fieldLabel:           field.fieldLabel,
+          fieldType:            field.fieldType,
+          placeholderText:      field.placeholderText,
+          helpText:             field.helpText,
+          isRequired:           field.isRequired,
+          isActive:             field.isActive,
+          displayOrder:         field.displayOrder,
+          minValue:             field.minValue,
+          maxValue:             field.maxValue,
+          minLength:            field.minLength,
+          maxLength:            field.maxLength,
+          regexPattern:         field.regexPattern,
+          displayFormat:        field.displayFormat,
+          optionsSourceFieldId: localSourceId || null,
+        },
+      })
+      toast(localSourceId ? 'Options source saved.' : 'Field set to use own options.')
+      onClose()
+    } catch (err) {
+      toast(err.message ?? 'Error saving source.', 'danger')
+    }
+  }
+
+  async function handleSaveOptions() {
     try {
       await save.mutateAsync(opts)
       toast('Options saved.')
@@ -303,30 +380,73 @@ function FieldOptionsModal({ fieldId, fieldLabel, onClose }) {
       <div className="modal-dialog modal-dialog-centered">
         <div className="modal-content">
           <div className="modal-header">
-            <h5 className="modal-title">Options — {fieldLabel}</h5>
+            <h5 className="modal-title">Options — {field.fieldLabel}</h5>
             <button type="button" className="btn-close" onClick={onClose} />
           </div>
           <div className="modal-body">
-            {isLoading ? <LoadingState /> : (
-              <>
+            {/* Source selector */}
+            <div className="mb-3">
+              <label className="form-label fw-semibold">Inherit options from</label>
+              <select className="form-select form-select-sm" value={localSourceId}
+                onChange={e => { setLocalSourceId(e.target.value); setItems(null) }}>
+                <option value="">— Own options —</option>
+                {sourceFields.map(f => (
+                  <option key={f.fieldDefinitionId} value={f.fieldDefinitionId}>{f.fieldLabel}</option>
+                ))}
+              </select>
+              {isInherited && (
+                <div className="form-text">Options are shared from the selected field. Manage them on the source field.</div>
+              )}
+            </div>
+
+            <hr className="my-2" />
+
+            {isLoading ? <LoadingState /> : isInherited ? (
+              <div className="d-flex flex-column gap-1" style={{ maxHeight: 320, overflowY: 'auto' }}>
                 {opts.map((opt, i) => (
-                  <div key={i} className="d-flex gap-2 mb-2 align-items-center">
-                    <input className="form-control form-control-sm" placeholder="Value" value={opt.optionValue}
-                      onChange={e => updateItem(i, 'optionValue', e.target.value)} />
-                    <input className="form-control form-control-sm" placeholder="Label" value={opt.optionLabel || ''}
-                      onChange={e => updateItem(i, 'optionLabel', e.target.value)} />
-                    <button type="button" className="btn btn-sm btn-outline-danger" onClick={() => removeItem(i)}>✕</button>
+                  <div key={i} className="d-flex gap-2 align-items-center px-1 py-1 rounded" style={{ background: '#f9fafb' }}>
+                    <code className="text-muted-sm" style={{ minWidth: 120 }}>{opt.optionKey}</code>
+                    <span style={{ fontSize: '.875rem' }}>{opt.optionLabel}</span>
                   </div>
                 ))}
-                <button type="button" className="btn btn-sm btn-outline-secondary mt-1" onClick={addItem}>+ Add Option</button>
+                {!opts.length && <p className="text-muted-sm mb-0">No options on source field yet.</p>}
+              </div>
+            ) : (
+              <>
+                <div style={{ maxHeight: 280, overflowY: 'auto' }}>
+                  {opts.map((opt, i) => (
+                    <div key={i} className="d-flex gap-2 mb-2 align-items-center">
+                      <input className="form-control form-control-sm" placeholder="Key" value={opt.optionKey || ''}
+                        onChange={e => updateItem(i, 'optionKey', e.target.value)} />
+                      <input className="form-control form-control-sm" placeholder="Label" value={opt.optionLabel || ''}
+                        onChange={e => updateItem(i, 'optionLabel', e.target.value)} />
+                      <button type="button" className="btn btn-sm btn-outline-danger" onClick={() => removeItem(i)}>✕</button>
+                    </div>
+                  ))}
+                </div>
+                <div className="d-flex gap-2 mt-2 align-items-center">
+                  <button type="button" className="btn btn-sm btn-outline-secondary" onClick={addItem}>+ Add Option</button>
+                  <button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => fileRef.current?.click()}>
+                    Upload CSV
+                  </button>
+                  <input ref={fileRef} type="file" className="d-none" accept=".csv,.txt,.tsv" onChange={handleFileUpload} />
+                  <span className="text-muted ms-1" style={{ fontSize: '.75rem' }}>CSV: key, label</span>
+                </div>
               </>
             )}
           </div>
           <div className="modal-footer">
             <button className="btn btn-outline-secondary" onClick={onClose}>Cancel</button>
-            <button className="btn btn-primary" onClick={handleSave} disabled={save.isPending}>
-              {save.isPending ? 'Saving…' : 'Save Options'}
-            </button>
+            {sourceChanged && (
+              <button className="btn btn-primary" onClick={handleSaveSource} disabled={update.isPending}>
+                {update.isPending ? 'Saving…' : 'Save Source'}
+              </button>
+            )}
+            {!isInherited && !sourceChanged && (
+              <button className="btn btn-primary" onClick={handleSaveOptions} disabled={save.isPending}>
+                {save.isPending ? 'Saving…' : `Save Options (${opts.length})`}
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -463,8 +583,10 @@ function PreviewPanel({ organizationId }) {
     const val = field.currentValue ?? ''
     const baseProps = { className: 'form-control form-control-sm', disabled: true, readOnly: true }
 
-    if (field.fieldType === 'boolean')
-      return <input type="checkbox" className="form-check-input" disabled checked={val === 'True'} readOnly />
+    if (field.fieldType === 'checkbox') {
+      const checked = val === '1' || val === 'true' || val === 'True'
+      return <input type="text" {...baseProps} value={val === '' ? '' : checked ? 'Yes' : 'No'} />
+    }
     if (field.fieldType === 'date')
       return <input type="date" {...baseProps} value={val} />
     if (field.fieldType === 'number')
@@ -472,12 +594,9 @@ function PreviewPanel({ organizationId }) {
     if (field.fieldType === 'phone')
       return <input type="text" {...baseProps} value={formatPhone(val, field.displayFormat)} />
     if (field.fieldType === 'dropdown') {
-      return (
-        <select className="form-select form-select-sm" disabled value={val}>
-          <option value="">— select —</option>
-          {field.options?.map(o => <option key={o.optionId} value={o.optionKey}>{o.optionLabel || o.optionKey}</option>)}
-        </select>
-      )
+      const selected = field.options?.find(o => o.optionKey === val)
+      const displayVal = selected ? (selected.optionLabel || selected.optionKey) : val
+      return <input type="text" {...baseProps} value={displayVal} />
     }
     return <input type="text" {...baseProps} value={val} />
   }
@@ -555,18 +674,107 @@ function PreviewPanel({ organizationId }) {
   )
 }
 
+// ─── Import from library modal ───────────────────────────────────────────────
+function ImportFromLibraryModal({ organizationId, onClose }) {
+  const toast = useToast()
+  const { data: libSections = [], isLoading } = useLibrarySections(false)
+  const importMutation = useImportFromLibrary(organizationId)
+  const [selectedIds, setSelectedIds] = useState([])
+
+  function toggle(id) {
+    setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
+  }
+
+  async function handleImport() {
+    if (selectedIds.length === 0) return
+    try {
+      const result = await importMutation.mutateAsync(selectedIds)
+      toast(`Imported ${result.sectionsCreated} section(s) and ${result.fieldsCreated} field(s).`)
+      onClose()
+    } catch (err) {
+      toast(err.message ?? 'Import failed.', 'danger')
+    }
+  }
+
+  return (
+    <div className="modal show d-block" tabIndex="-1" style={{ background: 'rgba(0,0,0,.45)' }}>
+      <div className="modal-dialog modal-lg modal-dialog-centered">
+        <div className="modal-content">
+          <div className="modal-header">
+            <h5 className="modal-title">Import from Field Library</h5>
+            <button type="button" className="btn-close" onClick={onClose} />
+          </div>
+          <div className="modal-body">
+            {isLoading ? <LoadingState /> : libSections.length === 0 ? (
+              <p className="text-muted">No library sections available.</p>
+            ) : (
+              <>
+                <p className="text-muted mb-3" style={{ fontSize: '.875rem' }}>
+                  Select sections to copy into this organisation. Fields and options will be duplicated — changes to the library will not affect what was already imported.
+                </p>
+                <div className="section-field-pick-list">
+                  {libSections.map(s => (
+                    <label key={s.id} className="section-field-pick-item" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 4 }}>
+                      <div className="d-flex align-items-center w-100 gap-2">
+                        <input
+                          type="checkbox"
+                          className="form-check-input"
+                          checked={selectedIds.includes(s.id)}
+                          onChange={() => toggle(s.id)}
+                        />
+                        <span className="fw-semibold">{s.sectionName}</span>
+                        <span className="badge bg-secondary-subtle text-secondary-emphasis ms-auto" style={{ fontSize: '.7rem' }}>
+                          {s.fields?.length ?? 0} field{(s.fields?.length ?? 0) !== 1 ? 's' : ''}
+                        </span>
+                      </div>
+                      {s.description && (
+                        <div className="text-muted ms-4" style={{ fontSize: '.8rem' }}>{s.description}</div>
+                      )}
+                      {s.fields?.length > 0 && (
+                        <div className="ms-4 d-flex flex-wrap gap-1 mt-1">
+                          {s.fields.map(f => (
+                            <span key={f.id} className="badge bg-light text-dark border" style={{ fontSize: '.7rem', fontWeight: 400 }}>
+                              {f.fieldLabel}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </label>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+          <div className="modal-footer">
+            <button type="button" className="btn btn-outline-secondary" onClick={onClose}>Cancel</button>
+            <button
+              type="button"
+              className="btn btn-primary"
+              disabled={selectedIds.length === 0 || importMutation.isPending}
+              onClick={handleImport}
+            >
+              {importMutation.isPending ? 'Importing…' : `Import ${selectedIds.length > 0 ? `(${selectedIds.length})` : ''}`}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── Main page ────────────────────────────────────────────────────────────────
 export default function InputsPage() {
   const { organizationId } = useParams()
   const toast = useToast()
 
-  const [showInactive,   setShowInactive]   = useState(false)
-  const [showFieldModal, setShowFieldModal] = useState(false)
-  const [editField,      setEditField]      = useState(null)
-  const [optionsField,   setOptionsField]   = useState(null)
-  const [showSectionModal, setShowSectionModal] = useState(false)
-  const [editSection,    setEditSection]    = useState(null)
-  const [confirmTarget,  setConfirmTarget]  = useState(null) // { type, item, newStatus }
+  const [showInactive,      setShowInactive]      = useState(false)
+  const [showFieldModal,    setShowFieldModal]    = useState(false)
+  const [editField,         setEditField]         = useState(null)
+  const [optionsField,      setOptionsField]      = useState(null)
+  const [showSectionModal,  setShowSectionModal]  = useState(false)
+  const [editSection,       setEditSection]       = useState(null)
+  const [showLibraryImport, setShowLibraryImport] = useState(false)
+  const [confirmTarget,     setConfirmTarget]     = useState(null) // { type, item, newStatus }
 
   const { data: org } = useOrganization(organizationId)
   const { data: sections = [], isLoading: sectionsLoading } = useSections(organizationId)
@@ -661,6 +869,7 @@ export default function InputsPage() {
                 checked={showInactive} onChange={e => setShowInactive(e.target.checked)} />
               <label className="form-check-label text-muted-sm" htmlFor="showInactive">Show inactive</label>
             </div>
+            <button className="btn btn-outline-secondary btn-sm" onClick={() => setShowLibraryImport(true)}>Import from Library</button>
             <button className="btn btn-outline-primary btn-sm" onClick={() => setShowSectionModal(true)}>+ New Section</button>
             <button className="btn btn-primary btn-sm" onClick={() => setShowFieldModal(true)}>+ New Input</button>
           </>
@@ -747,6 +956,7 @@ export default function InputsPage() {
           organizationId={organizationId}
           field={editField}
           sections={sections}
+          fields={fields}
           onClose={() => { setShowFieldModal(false); setEditField(null) }}
         />
       )}
@@ -768,9 +978,17 @@ export default function InputsPage() {
 
       {optionsField && (
         <FieldOptionsModal
-          fieldId={optionsField.fieldDefinitionId}
-          fieldLabel={optionsField.fieldLabel}
+          organizationId={organizationId}
+          field={optionsField}
+          allFields={fields}
           onClose={() => setOptionsField(null)}
+        />
+      )}
+
+      {showLibraryImport && (
+        <ImportFromLibraryModal
+          organizationId={organizationId}
+          onClose={() => setShowLibraryImport(false)}
         />
       )}
 

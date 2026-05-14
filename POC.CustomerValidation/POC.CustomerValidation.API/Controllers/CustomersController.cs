@@ -30,6 +30,8 @@ public class CustomersController(ICustomerService service, ILogger<CustomersCont
         return Ok(result);
     }
 
+
+
     /// <summary>Get a single customer by Id.</summary>
     [HttpGet("{customerId:guid}")]
     [EndpointSummary("Customers — get by Id")]
@@ -41,6 +43,8 @@ public class CustomersController(ICustomerService service, ILogger<CustomersCont
         var result = await _service.GetByIdAsync(customerId);
         return result is null ? NotFound() : Ok(result);
     }
+
+
 
     /// <summary>Create a single customer manually. CustomerCode is auto-generated.</summary>
     [HttpPost]
@@ -54,6 +58,8 @@ public class CustomersController(ICustomerService service, ILogger<CustomersCont
         return CreatedAtAction(nameof(GetById), new { organisationId, customerId = result.CustomerId }, result);
     }
 
+
+
     /// <summary>Update a customer's details.</summary>
     [HttpPut("{customerId:guid}")]
     [EndpointSummary("Customers — update")]
@@ -66,6 +72,8 @@ public class CustomersController(ICustomerService service, ILogger<CustomersCont
         return Ok(result);
     }
 
+
+
     /// <summary>Activate or deactivate a customer.</summary>
     [HttpPatch("{customerId:guid}/status")]
     [EndpointSummary("Customers — set status")]
@@ -77,4 +85,26 @@ public class CustomersController(ICustomerService service, ILogger<CustomersCont
         await _service.ChangeStatusAsync(customerId, request.IsActive);
         return NoContent();
     }
+
+    /// <summary>List all email addresses for a customer.</summary>
+    [HttpGet("{customerId:guid}/emails")]
+    [EndpointSummary("Customers — list emails")]
+    [ProducesResponseType(typeof(IEnumerable<CustomerEmailDto>), StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetEmails(Guid organisationId, Guid customerId)
+    {
+        _log.LogInformation("GetEmails for customer {CustomerId}", customerId);
+        return Ok(await _service.GetEmailsByCustomerIdAsync(customerId));
+    }
+
+    /// <summary>List all phone numbers for a customer.</summary>
+    [HttpGet("{customerId:guid}/phones")]
+    [EndpointSummary("Customers — list phones")]
+    [ProducesResponseType(typeof(IEnumerable<CustomerPhoneDto>), StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetPhones(Guid organisationId, Guid customerId)
+    {
+        _log.LogInformation("GetPhones for customer {CustomerId}", customerId);
+        return Ok(await _service.GetPhonesByCustomerIdAsync(customerId));
+    }
+
+
 }

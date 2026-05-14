@@ -4,6 +4,7 @@ import { Outlet, NavLink, useParams, useLocation } from 'react-router-dom'
 const NAV_ITEMS = [
   { to: '/dashboard',      icon: '📊', label: 'Dashboard' },
   { to: '/organizations',  icon: '🏢', label: 'Organizations' },
+  { to: '/library',        icon: '📚', label: 'Field Library' },
 ]
 
 function OrgSubNav({ orgId }) {
@@ -29,6 +30,10 @@ function OrgSubNav({ orgId }) {
         className={({isActive}) => `sidebar-link ${isActive ? 'active' : ''}`}>
         <span className="nav-icon">🔧</span><span className="nav-label">Staging</span>
       </NavLink>
+      <NavLink to={`/organizations/${orgId}/ingestion`}
+        className={({isActive}) => `sidebar-link ${isActive ? 'active' : ''}`}>
+        <span className="nav-icon">⚡</span><span className="nav-label">Ingestion</span>
+      </NavLink>
     </div>
   )
 }
@@ -36,6 +41,7 @@ function OrgSubNav({ orgId }) {
 function usePageTitle() {
   const location = useLocation()
   const { pathname } = location
+  if (pathname.includes('/ingestion'))        return 'Ingestion'
   if (pathname.includes('/import-staging'))  return 'Import Staging'
   if (pathname.includes('/import'))          return 'Import'
   if (pathname.includes('/customers'))       return 'Customers'
@@ -43,6 +49,7 @@ function usePageTitle() {
   if (/\/organizations\/[^/]+$/.test(pathname)) return 'Organization Overview'
   if (pathname.startsWith('/organizations')) return 'Organizations'
   if (pathname.startsWith('/dashboard'))     return 'Dashboard'
+  if (pathname.startsWith('/library'))       return 'Field Library'
   return 'Admin Portal'
 }
 

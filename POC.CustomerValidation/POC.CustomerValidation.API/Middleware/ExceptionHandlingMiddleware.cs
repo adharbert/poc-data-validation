@@ -30,11 +30,12 @@ namespace POC.CustomerValidation.API.Middleware
         {
             var (statusCode, errorCode, message) = ex switch
             {
-                KeyNotFoundException =>         (HttpStatusCode.NotFound,               "NOT_FOUND", ex.Message),
-                InvalidOperationException =>    (HttpStatusCode.Conflict,               "CONFLICT", ex.Message),
-                UnauthorizedAccessException =>  (HttpStatusCode.Forbidden,              "FORBIDDEN", ex.Message),
-                ArgumentException =>            (HttpStatusCode.BadRequest,             "BAD_REQUEST", ex.Message),
-                _ =>                            (HttpStatusCode.InternalServerError,    "INTERNAL_ERROR", "An unexpected error occurred. Please try again later.")
+                KeyNotFoundException =>         (HttpStatusCode.NotFound,               "NOT_FOUND",       ex.Message),
+                FileNotFoundException =>        (HttpStatusCode.NotFound,               "NOT_FOUND",       ex.Message),
+                InvalidOperationException =>    (HttpStatusCode.Conflict,               "CONFLICT",        ex.Message),
+                UnauthorizedAccessException =>  (HttpStatusCode.Forbidden,              "FORBIDDEN",       ex.Message),
+                ArgumentException =>            (HttpStatusCode.BadRequest,             "BAD_REQUEST",     ex.Message),
+                _ =>                            (HttpStatusCode.InternalServerError,    "INTERNAL_ERROR",  "An unexpected error occurred. Please try again later.")
             };
 
             if (statusCode == HttpStatusCode.InternalServerError)

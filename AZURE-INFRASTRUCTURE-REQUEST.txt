@@ -1,0 +1,312 @@
+================================================================================
+  AZURE INFRASTRUCTURE REQUEST
+  Application: Customer Data Validation Portal (POC)
+  Prepared by: Development Team
+================================================================================
+
+PURPOSE
+-------
+This document lists all Azure resources and configuration required to deploy the
+Customer Data Validation Portal. The application is a multi-tenant ASP.NET Core
+API + React admin SPA that manages customer data validation workflows. A key
+feature is on-demand provisioning of isolated Azure SQL databases for clients
+that require data separation.
+
+All authentication between the API and Azure services uses Managed Identity
+(no stored credentials / no passwords in config files).
+
+
+================================================================================
+SECTION 1 — RESOURCE GROUP
+================================================================================
+
+ACTION: Create one Resource Group to contain all application resources.
+
+  Resource Group Name : [TO BE DECIDED — e.g., rg-poc-datavalidation-dev]
+  Region/Location     : [TO BE DECIDED — e.g., East US]
+  Subscription        : [PROVIDE SUBSCRIPTION ID TO DEVELOPMENT TEAM]
+
+Note: All resources below should be created inside this resource group
+      and in the same region.
+
+
+================================================================================
+SECTION 2 — AZURE SQL SERVER
+================================================================================
+
+ACTION: Create one logical Azure SQL Server (not a database — this is the
+        server that will host all databases).
+
+  SQL Server Name     : [e.g., sql-poc-datavalidation-dev]
+                        (Full address will be: <name>.database.windows.net)
+  Region              : Same as Resource Group
+  Authentication Mode : Azure Active Directory (AAD) ONLY
+                        Disable SQL login authentication.
+  AAD Admin           : Set the App Service's Managed Identity as the
+                        AAD admin (or a designated AAD admin account).
+                        See Section 4 for Managed Identity details.
+  Firewall Rules      : Allow Azure services to access the server
+                        (toggle "Allow Azure services and resources to
+                        access this server" = ON).
+                        Add developer IP ranges as needed for local debugging.
+  TLS Version         : Minimum TLS 1.2
+
+
+================================================================================
+SECTION 3 — AZURE SQL DATABASES
+================================================================================
+
+The application uses three categories of databases:
+
+------------------------------------------------------------
+3A. Shared Application Database (always required — 1 database)
+------------------------------------------------------------
+
+  Database Name : poc-datavalidation  (or chosen name)
+  Server        : SQL Server from Section 2
+  Purpose       : Main application data — customers, organizations,
+                  field definitions, imports, contracts, etc.
+  SKU/Tier      : General Purpose — 2 vCores (dev); scale as needed
+  Note          : Provide the full connection string to the
+                  development team after creation (see Section 6).
+
+------------------------------------------------------------
+3B. Logging Database (always required — 1 database)
+------------------------------------------------------------
+
+  Database Name : ApplicationLogs
+  Server        : SQL Server from Section 2 (can share the same server)
+  Purpose       : Serilog structured log storage
+  SKU/Tier      : Basic or General Purpose — 1 vCore (low volume)
+
+------------------------------------------------------------
+3C. Elastic Pool for Tenant-Isolated Databases (required for isolation feature)
+------------------------------------------------------------
+
+  Elastic Pool Name : ep-poc-tenants-dev
+  Server            : SQL Server from Section 2
+  Purpose           : Hosts one database per organization that requires
+                      data isolation. The API creates these databases
+                      automatically — no manual steps needed per tenant.
+  SKU/Tier          : General Purpose — 4 vCores minimum, autoscale
+                      recommended (starts empty, grows as tenants are added)
+
+  IMPORTANT: Provide the full Resource ID of the elastic pool to the
+  development team. It follows this format:
+    /subscriptions/{subscriptionId}/resourceGroups/{resourceGroup}
+    /providers/Microsoft.Sql/servers/{serverName}/elasticPools/{poolName}
+
+
+================================================================================
+SECTION 4 — APP SERVICE (API HOST)
+================================================================================
+
+------------------------------------------------------------
+4A. App Service Plan
+------------------------------------------------------------
+
+  Plan Name : asp-poc-datavalidation-dev
+  OS        : Linux  (or Windows — either works)
+  SKU/Tier  : B2 minimum for dev; P1v3 recommended for production
+
+------------------------------------------------------------
+4B. App Service (Web App)
+------------------------------------------------------------
+
+  App Name    : app-poc-datavalidation-dev
+                (Public URL will be: <name>.azurewebsites.net)
+  Runtime     : .NET 10
+  App Plan    : Plan from 4A
+
+------------------------------------------------------------
+4C. System-Assigned Managed Identity
+------------------------------------------------------------
+
+  ACTION: Enable System-Assigned Managed Identity on the App Service.
+  (Azure Portal → App Service → Identity → System assigned → Status: ON)
+
+  Once enabled, note the Object (principal) ID — provide it to the
+  development team and use it for the role assignments in Section 5.
+
+
+================================================================================
+SECTION 5 — ROLE ASSIGNMENTS (PERMISSIONS)
+================================================================================
+
+The App Service's Managed Identity needs the following permissions:
+
+------------------------------------------------------------
+5A. SQL Database creation permission
+------------------------------------------------------------
+
+  Principal  : App Service Managed Identity (from Section 4C)
+  Scope      : The SQL Server resource (from Section 2)
+  Role       : Contributor
+  Purpose    : Allows the API to call Azure Resource Manager to create
+               new SQL databases automatically when an organization is
+               flagged for data isolation.
+
+  Alternatively, assign "SQL DB Contributor" if Contributor is too broad.
+
+------------------------------------------------------------
+5B. SQL Database access
+------------------------------------------------------------
+
+  After the Managed Identity is created, add it as an AAD user inside
+  each SQL database so it can read/write data:
+
+  Run the following SQL in each database (poc-datavalidation, ApplicationLogs):
+
+    CREATE USER [<app-service-name>] FROM EXTERNAL PROVIDER;
+    ALTER ROLE db_datareader ADD MEMBER [<app-service-name>];
+    ALTER ROLE db_datawriter ADD MEMBER [<app-service-name>];
+    ALTER ROLE db_ddladmin   ADD MEMBER [<app-service-name>];
+
+  Note: Replace <app-service-name> with the App Service name from Section 4B.
+        The API uses Managed Identity for all SQL connections in Azure —
+        no SQL usernames or passwords are used.
+
+------------------------------------------------------------
+5C. Elastic Pool assignment (for tenant database creation)
+------------------------------------------------------------
+
+  When the API creates a tenant database via ARM, it places the database
+  in the elastic pool automatically. No additional role is needed beyond
+  Section 5A, but confirm the Managed Identity can create databases
+  within the elastic pool (included in the Contributor role on the server).
+
+
+================================================================================
+SECTION 6 — APP SERVICE CONFIGURATION (APPLICATION SETTINGS)
+================================================================================
+
+The following key/value pairs must be added to the App Service's
+Application Settings (Azure Portal → App Service → Configuration →
+Application settings). These override appsettings.json at runtime.
+
+  Key                             Value
+  ─────────────────────────────── ──────────────────────────────────────────────
+  ConnectionStrings__DefaultConnection
+      Server=tcp:<sqlserver>.database.windows.net,1433;
+      Initial Catalog=poc-datavalidation;
+      Authentication=Active Directory Default;
+      Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;
+
+  ConnectionStrings__LoggingConnection
+      Server=tcp:<sqlserver>.database.windows.net,1433;
+      Initial Catalog=ApplicationLogs;
+      Authentication=Active Directory Default;
+      Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;
+
+  Azure__SubscriptionId           [Azure Subscription ID — GUID format]
+  Azure__ResourceGroupName        [Resource group name from Section 1]
+  Azure__SqlServerName            [SQL server name WITHOUT .database.windows.net]
+  Azure__Location                 [Azure region, e.g., eastus]
+  Azure__ElasticPoolResourceId    [Full resource ID from Section 3C]
+
+  Cors__AllowedOrigins__0         [URL of the React admin app, e.g.,
+                                   https://app-poc-admin.azurewebsites.net]
+
+Note: Use double underscore (__) to represent nested JSON keys in
+      App Service Application Settings.
+      Replace all <placeholders> with actual values.
+
+
+================================================================================
+SECTION 7 — CI/CD SERVICE PRINCIPAL (DEVOPS PIPELINE)
+================================================================================
+
+The deployment pipeline (Azure DevOps / GitHub Actions) needs credentials
+to push code to the App Service.
+
+ACTION: Create an App Registration (Service Principal) for the pipeline.
+
+  Name    : sp-poc-datavalidation-cicd
+  Role    : Contributor on the App Service (or Resource Group)
+  Provide to development team:
+    - Application (client) ID
+    - Directory (tenant) ID
+    - Client Secret (or use federated credentials for GitHub Actions — preferred)
+
+For GitHub Actions with OIDC (no secret needed — recommended):
+  - Configure federated identity credentials on the App Registration
+  - Grant the pipeline the "Website Contributor" role on the App Service
+
+
+================================================================================
+SECTION 8 — AZURE BLOB STORAGE (IMPORT FILE UPLOADS)
+================================================================================
+
+The application supports bulk CSV/Excel customer imports. Files uploaded
+by admins need to be stored in Azure Blob Storage.
+
+ACTION: Create a Storage Account.
+
+  Storage Account Name : stpoc[uniquesuffix]dev  (3–24 lowercase alphanumeric)
+  Region               : Same as Resource Group
+  Redundancy           : LRS (dev) / ZRS (production)
+  Access Tier          : Hot
+
+ACTION: Create a Blob Container inside the Storage Account.
+
+  Container Name  : import-uploads
+  Access Level    : Private (no public access)
+
+ACTION: Grant the App Service Managed Identity access to the container.
+
+  Principal : App Service Managed Identity (from Section 4C)
+  Scope     : The Storage Account or the specific container
+  Role      : Storage Blob Data Contributor
+
+  Provide the storage account name and container name to the
+  development team so the connection can be configured in appsettings.
+
+
+================================================================================
+SECTION 9 — DEVELOPER LOCAL ACCESS
+================================================================================
+
+Developers running the application locally authenticate to Azure using
+the Azure CLI. No credentials need to be shared.
+
+Each developer must:
+  1. Install Azure CLI  (https://learn.microsoft.com/en-us/cli/azure/install-azure-cli)
+  2. Run: az login
+  3. Run: az account set --subscription "<subscription-id>"
+
+The application's DefaultAzureCredential picks this up automatically.
+
+Additionally, each developer's AAD account needs:
+  - db_datareader / db_datawriter / db_ddladmin in the shared SQL databases
+    (same SQL as Section 5B, using their AAD account name)
+  - Read access to the Resource Group (to allow local Azure SDK calls)
+
+
+================================================================================
+SECTION 10 — SUMMARY CHECKLIST FOR SYSTEM ADMINISTRATOR
+================================================================================
+
+  [ ] Resource Group created (Section 1)
+  [ ] Azure SQL Server created with AAD-only auth (Section 2)
+  [ ] Shared application database created: poc-datavalidation (Section 3A)
+  [ ] Logging database created: ApplicationLogs (Section 3B)
+  [ ] Elastic Pool created for tenant databases (Section 3C)
+        → Provide elastic pool Resource ID to dev team
+  [ ] App Service Plan created (Section 4A)
+  [ ] App Service (.NET 10) created (Section 4B)
+  [ ] System-Assigned Managed Identity enabled on App Service (Section 4C)
+        → Provide Managed Identity Object ID to dev team
+  [ ] Managed Identity granted Contributor on SQL Server (Section 5A)
+  [ ] Managed Identity added as AAD user in each shared database (Section 5B)
+  [ ] App Service Application Settings configured (Section 6)
+        → Provide connection strings and config values to dev team
+  [ ] CI/CD Service Principal created (Section 7)
+        → Provide client ID, tenant ID, and secret/federated creds to dev team
+  [ ] Storage Account and import-uploads container created (Section 8)
+        → Provide storage account name to dev team
+  [ ] Managed Identity granted Storage Blob Data Contributor on container (Section 8)
+  [ ] Developer AAD accounts added to shared databases (Section 9)
+
+================================================================================
+END OF DOCUMENT
+================================================================================

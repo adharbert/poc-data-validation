@@ -3,7 +3,21 @@
     "allow": [
       "Bash(dotnet build *)",
       "Bash(npm install *)",
-      "Bash(npm run *)"
+      "Bash(npm run *)",
+      "PowerShell(Get-ChildItem -Path \"c:\\\\code\\\\tests\\\\poc-data-validation\\\\POC.CustomerValidation\\\\POC.CustomerValidation.API\\\\Persistence\\\\Repositories\\\\\" | Where-Object {$_.Name -match \"ontract\"})",
+      "Bash(dotnet restore *)",
+      "Bash(Get-ChildItem -Path \"c:\\\\code\\\\tests\\\\poc-data-validation\\\\TASK-FILES\\\\\" -File | Select-Object Name, FullName)",
+      "Bash(Get-ChildItem -Path \"c:\\\\code\\\\tests\\\\poc-data-validation\" -Directory)",
+      "Bash(Select-Object Name)",
+      "PowerShell(ls -R \"c:\\\\code\\\\tests\\\\poc-data-validation\")",
+      "PowerShell(head -100)",
+      "Bash(Get-ChildItem -Path \"c:\\\\code\\\\tests\\\\poc-data-validation\\\\POC.CustomerValidation\" -Recurse -Directory)",
+      "Bash(Select-Object -First 20)",
+      "Bash(Get-ChildItem -Path \"c:\\\\code\\\\tests\\\\poc-data-validation\" -Recurse -Directory)",
+      "Bash(Select-Object -ExpandProperty FullName)",
+      "Bash(Remove-Item \"c:\\\\code\\\\tests\\\\poc-data-validation\\\\POC.CustomerValidation\\\\POC.CustomerValidation.API\\\\Services\\\\Provisioning\\\\StartupCentralDbMigrationService.cs\")",
+      "Bash(node -e \"const pkg = require\\('./node_modules/ag-grid-community/package.json'\\); console.log\\(pkg.version\\)\")",
+      "Bash(node -e \"const ag = require\\('c:/code/tests/poc-data-validation/ClientAdmin/datavalidation-portal/node_modules/ag-grid-community'\\); console.log\\(Object.keys\\(ag\\).filter\\(k => k.includes\\('Module'\\) || k.includes\\('theme'\\)\\).slice\\(0, 20\\)\\)\")"
     ]
   }
 }

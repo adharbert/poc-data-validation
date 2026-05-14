@@ -11,12 +11,12 @@ namespace POC.CustomerValidation.API.Controllers;
 /// </summary>
 [Route("api/customers/{customerId:guid}/addresses")]
 [ApiController]
-public class CustomerAddressesController(
-    ICustomerAddressService service,
-    ILogger<CustomerAddressesController> log) : ControllerBase
+public class CustomerAddressesController(ICustomerAddressService service, ILogger<CustomerAddressesController> log) : ControllerBase
 {
     private readonly ICustomerAddressService            _service = service;
     private readonly ILogger<CustomerAddressesController> _log   = log;
+
+
 
     /// <summary>List all addresses for a customer (full history, newest first).</summary>
     [HttpGet]
@@ -27,6 +27,8 @@ public class CustomerAddressesController(
         _log.LogInformation("GetAll addresses for customer {CustomerId}", customerId);
         return Ok(await _service.GetAllAsync(customerId));
     }
+
+
 
     /// <summary>Get the customer's current address.</summary>
     [HttpGet("current")]
@@ -39,6 +41,10 @@ public class CustomerAddressesController(
         var result = await _service.GetCurrentAsync(customerId);
         return result is null ? NotFound() : Ok(result);
     }
+
+
+
+
 
     /// <summary>
     /// Add a new address for the customer.
@@ -56,6 +62,9 @@ public class CustomerAddressesController(
         return CreatedAtAction(nameof(GetCurrent), new { customerId }, result);
     }
 
+
+
+
     /// <summary>Customer confirms the current address is correct.</summary>
     [HttpPatch("{addressId:guid}/confirm")]
     [EndpointSummary("Customer Addresses — confirm")]
@@ -67,4 +76,6 @@ public class CustomerAddressesController(
         var result = await _service.ConfirmAsync(customerId, addressId);
         return Ok(result);
     }
+
+
 }

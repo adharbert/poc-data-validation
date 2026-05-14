@@ -72,16 +72,22 @@ public class FieldOptionRepository(IDbConnectionFactory db, ILogger<FieldOptionR
             // SQL Merge statement.
             const string sql = """
                 MERGE FieldOptions AS target
-                USING (SELECT @FieldDefinitionId, @OptionKey) as source
+                USING (
+                    SELECT
+                        @FieldDefinitionId  AS FieldDefinitionId,
+                        @OptionKey          AS OptionKey,
+                        @OptionLabel        AS OptionLabel,
+                        @DisplayOrder       AS DisplayOrder
+                ) AS source
                     ON target.FieldDefinitionId = source.FieldDefinitionId AND target.OptionKey = source.OptionKey
-                WHEN Matched THEN 
-                    UPDATE SET 
+                WHEN MATCHED THEN
+                    UPDATE SET
                         OptionLabel     = source.OptionLabel,
                         DisplayOrder    = source.DisplayOrder,
-                        IsActive        = source.IsActive
-                WHEN Not Matched Then
-                    INSERT (Id      , FieldDefinitionId         , OptionKey         , OptionLabel           , DisplayOrder          , IsActive)
-                    VALUES (NEWID() , source.FieldDefinitionId  , source.OptionKey  , source.OptionLabel    , source.DisplayOrder   , 1);
+                        IsActive        = 1
+                WHEN NOT MATCHED THEN
+                    INSERT (Id,     FieldDefinitionId,          OptionKey,          OptionLabel,            DisplayOrder,           IsActive)
+                    VALUES (NEWID(), source.FieldDefinitionId,  source.OptionKey,   source.OptionLabel,     source.DisplayOrder,    1);
                 """;
             // Loop through options and execute query after completed.
             foreach (var option in options) 

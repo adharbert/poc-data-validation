@@ -30,6 +30,8 @@ covered by the quick-reference rules below.
 | [TASK-FILES/TASK-07-IMPORT.md](TASK-FILES/TASK-07-IMPORT.md) | CSV/Excel import design, 5-step flow, value mapping |
 | [TASK-FILES/TASK-08-WHATS_NEXT.md](TASK-FILES/TASK-08-WHATS_NEXT.md) | Remaining work, prioritised |
 | [TASK-FILES/TASK-09-CONTRACTS-PROJECTS.md](TASK-FILES/TASK-09-CONTRACTS-PROJECTS.md) | Contracts, Marketing Projects, Import Staging — business rules and schema |
+| [TASK-FILES/TASK-10-ANALYTICS-CAMPAIGNS.md](TASK-FILES/TASK-10-ANALYTICS-CAMPAIGNS.md) | Phase 4 — analytics scoring, canonical data standardization, vendor integrations (Five9, Iterable, mailing) |
+| [TASK-FILES/TASK-11-ETL-IMPORT-GUIDE.md](TASK-FILES/TASK-11-ETL-IMPORT-GUIDE.md) | ETL team guide — full API-driven import workflow, mapping payload reference, value aliases, error handling |
 
 ---
 
@@ -75,7 +77,3 @@ cd ClientAdmin/datavalidation-portal && npm run dev
 - Wrap all inserts/updates in `BEGIN TRANSACTION` / `BEGIN TRY` / `BEGIN CATCH`
 - Guard against duplicate runs before inserting
 
-### Known gotcha — do not fix
-
-`FieldDefinitions.DsiplayOrder` — column name has a typo in the DB (`DsiplayOrder`, not `DisplayOrder`).
-**Never rename it.** Always reference it as `DsiplayOrder` in all SQL and entity/DTO mappings.

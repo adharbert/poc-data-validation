@@ -7,7 +7,10 @@ public class Contract
     public string       ContractName    { get; set; } = default!;
     public string?      ContractNumber  { get; set; }
     public DateOnly     StartDate       { get; set; }
+    public DateOnly?    OriginalEndDate { get; set; }
     public DateOnly?    EndDate         { get; set; }
+    public decimal?     OriginalCost    { get; set; }
+    public decimal?     TotalCost       { get; set; }
     public bool         IsActive        { get; set; } = true;
     public string?      Notes           { get; set; }
     public DateTime     CreatedDt       { get; set; }

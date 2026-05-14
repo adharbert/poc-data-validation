@@ -31,7 +31,13 @@ export default defineConfig(({ mode }) => {
         '/api': {
           target:       env.DEV_API_TARGET || 'https://localhost:7017',
           changeOrigin: true,
-          secure:       false, // allow self-signed dev cert
+          secure:       false,
+        },
+        '/hubs': {
+          target:       env.DEV_API_TARGET || 'https://localhost:7017',
+          changeOrigin: true,
+          secure:       false,
+          ws:           true,  // forward WebSocket upgrade for SignalR
         },
       },
     },

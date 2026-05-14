@@ -4,15 +4,17 @@ using Moq;
 using POC.CustomerValidation.API.Controllers;
 using POC.CustomerValidation.API.Interfaces;
 using POC.CustomerValidation.API.Models.DTOs;
+using POC.CustomerValidation.API.Services.Provisioning;
 
 namespace POC.CustomerValidation.Test.Controllers;
 
 public class OrganizationsControllerTests
 {
-    private readonly Mock<IOrganizationServices> _svcMock = new();
+    private readonly Mock<IOrganizationServices>             _svcMock         = new();
+    private readonly Mock<IOrganizationProvisioningService>  _provisioningMock = new();
 
     private OrganizationsController CreateSut() =>
-        new(_svcMock.Object, NullLogger<OrganizationsController>.Instance);
+        new(_svcMock.Object, _provisioningMock.Object, NullLogger<OrganizationsController>.Instance);
 
     // ── GetAll ────────────────────────────────────────────────────────────────
 
@@ -165,5 +167,6 @@ public class OrganizationsControllerTests
     private static OrganizationDto BuildOrg(Guid? id = null) => new(
         id ?? Guid.NewGuid(), "Acme Corp", "ORG001",
         null, null, "ACME", null, null, null,
-        true, DateTime.UtcNow, "System", DateTime.UtcNow, null);
+        true, false, null,
+        DateTime.UtcNow, "System", DateTime.UtcNow, null);
 }

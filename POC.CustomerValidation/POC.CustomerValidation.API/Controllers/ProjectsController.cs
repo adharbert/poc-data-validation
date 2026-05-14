@@ -26,6 +26,8 @@ public class ProjectsController(IMarketingProjectService service, ILogger<Projec
         return Ok(results);
     }
 
+
+
     /// <summary>Get a single marketing project by its integer project Id.</summary>
     [HttpGet("{projectId:int}")]
     [EndpointSummary("Projects — get by Id")]
@@ -37,6 +39,8 @@ public class ProjectsController(IMarketingProjectService service, ILogger<Projec
         var result = await _service.GetByIdAsync(projectId);
         return result is null ? NotFound() : Ok(result);
     }
+
+
 
     /// <summary>Create a new marketing project. Project ID is auto-assigned starting at 8000.</summary>
     [HttpPost]
@@ -50,6 +54,8 @@ public class ProjectsController(IMarketingProjectService service, ILogger<Projec
         return CreatedAtAction(nameof(GetById), new { organisationId, projectId = result.ProjectId }, result);
     }
 
+
+
     /// <summary>Update a marketing project's details.</summary>
     [HttpPut("{projectId:int}")]
     [EndpointSummary("Projects — update")]
@@ -62,6 +68,8 @@ public class ProjectsController(IMarketingProjectService service, ILogger<Projec
         return Ok(result);
     }
 
+
+
     /// <summary>Activate or deactivate a marketing project.</summary>
     [HttpPatch("{projectId:int}/status")]
     [EndpointSummary("Projects — set status")]
@@ -73,4 +81,7 @@ public class ProjectsController(IMarketingProjectService service, ILogger<Projec
         await _service.ChangeStatusAsync(projectId, request.IsActive, request.ModifiedBy);
         return NoContent();
     }
+
+
+
 }

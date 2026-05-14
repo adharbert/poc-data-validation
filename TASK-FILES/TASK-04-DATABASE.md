@@ -21,18 +21,31 @@ Organizations
     │       │                                                  │
     │       ├── FieldValues (CustomerId FK, FieldDefinitionId FK)
     │       │
-    │       └── CustomerAddresses (CustomerId FK)
-    │               └── CustomerAddresses_History  (temporal)
+    │       ├── CustomerAddresses (CustomerId FK)
+    │       │       └── CustomerAddresses_History  (temporal)
+    │       │
+    │       └── CustomerSegmentations (CustomerId FK)
+    │               └── Segmentations ◄── MarketingProjects
+    │
+    ├── Contracts
+    │
+    ├── MarketingProjects (ContractId FK, optional)
+    │       └── Segmentations (ProjectId FK)
+    │               └── CustomerSegmentations (SegmentationId FK)
     │
     └── ImportBatches
             │
             ├── ImportColumnMappings ──► FieldDefinitions
+            │       │
+            │       ├── ImportColumnMappingOutputs  (split transforms)
             │       │
             │       └── ImportValueMappings
             │
             ├── ImportErrors
             │
             └── SavedColumnMappings ──► FieldDefinitions
+                    │
+                    └── SavedColumnMappingOutputs  (split transforms)
 ```
 
 ---
@@ -128,7 +141,7 @@ field per organisation. No schema changes needed to add new fields.
 | HelpText | NVARCHAR(500) | NULL |
 | IsRequired | BIT | Default 0 |
 | IsActive | BIT | Default 1 |
-| DsiplayOrder | INT | Note: column has typo in DB, keep as-is |
+| DisplayOrder | INT | Sort order within the organization |
 | MinValue | DECIMAL(18,4) | For number fields |
 | MaxValue | DECIMAL(18,4) | For number fields |
 | MinLength | INT | For text fields |
@@ -235,16 +248,47 @@ data goes.
 | ImportBatchId | UNIQUEIDENTIFIER | FK → ImportBatches |
 | CsvHeader | NVARCHAR(200) | Exact header text from file |
 | CsvColumnIndex | INT | Zero-based column position |
-| MappingType | NVARCHAR(20) | `customer_field`, `field_definition`, `skip` |
-| CustomerFieldName | NVARCHAR(100) | `FirstName`, `LastName`, `MiddleName`, `Email` only |
-| FieldDefinitionId | UNIQUEIDENTIFIER | FK → FieldDefinitions, NULL |
+| DestinationTable | NVARCHAR(20) | `customer`, `customer_address`, `field_value`, `skip` |
+| DestinationField | NVARCHAR(100) | Column/key within destination table. NULL for `split` or `skip`. |
+| TransformType | NVARCHAR(30) | `direct` (default) or `split_full_name` |
+| FieldDefinitionId | UNIQUEIDENTIFIER | FK → FieldDefinitions, NULL (only for `field_value`) |
 | IsAutoMatched | BIT | 1 = system matched, 0 = manually mapped |
 | IsRequired | BIT | Copied from FieldDefinition |
 | SavedForReuse | BIT | 1 = persist to SavedColumnMappings on success |
 | DisplayOrder | INT | |
 
-**Note:** `CustomerCode` is NOT a valid `CustomerFieldName`.
-It is always system-generated from `Organisation.Abbreviation + ULID`.
+**DestinationField values by table:**
+- `customer` → `FirstName`, `LastName`, `MiddleName`, `MaidenName`, `DateOfBirth`, `Email`, `Phone`, `OriginalId`
+- `customer_address` → `AddressLine1`, `AddressLine2`, `City`, `State`, `PostalCode`, `Country`, `AddressType`
+- `field_value` → leave NULL; use `FieldDefinitionId` instead
+- `skip` → leave NULL
+
+**TransformType `split_full_name`:** the single CSV cell value is parsed into name parts
+(First, Middle, Last, Suffix, Credentials) using `FullNameParser`. Each output token is
+assigned to a destination via `ImportColumnMappingOutputs`. Handles credential suffixes
+such as `, M.D.` and degree/generation suffixes such as `, Jr.`
+
+**Note:** `CustomerCode` is system-generated. It is never a valid `DestinationField`.
+
+---
+
+### ImportColumnMappingOutputs
+One row per output token for `split_full_name` (or future multi-output) transforms.
+Only present when the parent mapping has `TransformType != 'direct'`.
+
+| Column | Type | Notes |
+|---|---|---|
+| Id | UNIQUEIDENTIFIER | PK |
+| MappingId | UNIQUEIDENTIFIER | FK → ImportColumnMappings |
+| OutputToken | NVARCHAR(50) | Token name e.g. `FirstName`, `MiddleName`, `LastName`, `Suffix`, `Credentials` |
+| DestinationTable | NVARCHAR(20) | `customer`, `customer_address`, `field_value`, `skip` |
+| DestinationField | NVARCHAR(100) | NULL if `skip` or `field_value` |
+| FieldDefinitionId | UNIQUEIDENTIFIER | FK → FieldDefinitions, NULL |
+| SortOrder | INT | Display order in the UI output panel |
+
+**Constraints:**
+- `UNIQUE (MappingId, OutputToken)` — one row per token per mapping
+- `CK_ImportColumnMappingOutputs_DestinationTable` — restricts to valid table values
 
 ---
 
@@ -296,14 +340,29 @@ HeaderFingerprint` for automatic reuse on future uploads.
 | HeaderFingerprint | NVARCHAR(64) | SHA-256 of sorted headers |
 | CsvHeader | NVARCHAR(200) | |
 | CsvColumnIndex | INT | |
-| MappingType | NVARCHAR(20) | |
-| CustomerFieldName | NVARCHAR(100) | NULL |
+| DestinationTable | NVARCHAR(20) | `customer`, `customer_address`, `field_value`, `skip` |
+| DestinationField | NVARCHAR(100) | NULL for `skip` / split transforms |
+| TransformType | NVARCHAR(30) | `direct` or `split_full_name` |
 | FieldDefinitionId | UNIQUEIDENTIFIER | FK → FieldDefinitions, NULL |
 | DisplayOrder | INT | |
 | LastUsedAt | DATETIME2 | Updated each time this mapping is applied |
 | UseCount | INT | Incremented each use |
 
 ---
+
+### SavedColumnMappingOutputs
+Stores the per-token output assignments for saved split transforms.
+Mirrors `ImportColumnMappingOutputs` but keyed to `SavedColumnMappings`.
+
+| Column | Type | Notes |
+|---|---|---|
+| Id | UNIQUEIDENTIFIER | PK |
+| MappingId | UNIQUEIDENTIFIER | FK → SavedColumnMappings |
+| OutputToken | NVARCHAR(50) | e.g. `FirstName`, `MiddleName`, `LastName`, `Suffix`, `Credentials` |
+| DestinationTable | NVARCHAR(20) | `customer`, `customer_address`, `field_value`, `skip` |
+| DestinationField | NVARCHAR(100) | NULL if `skip` or `field_value` |
+| FieldDefinitionId | UNIQUEIDENTIFIER | FK → FieldDefinitions, NULL |
+| SortOrder | INT | |
 
 ---
 
@@ -338,7 +397,7 @@ Uses SQL Server **temporal tables** — identical pattern to `Customers`.
 
 **Index:** `IX_CustomerAddresses_CustomerId_IsCurrent` on `(CustomerId, IsCurrent)` — fast current-address lookup.
 
-**Migration:** `scripts/Migrations/Migration_004_CustomerAddresses.sql`
+**SSDT:** `dbo/Tables/CustomerAddresses.sql` — managed by SSDT publish.
 
 **Mailer eligibility:** rows where `MelissaValidated = 1 AND CustomerConfirmed = 1`.
 
@@ -357,10 +416,93 @@ Indexed on `(OrganizationId, OriginalId) WHERE OriginalId IS NOT NULL`.
 
 ---
 
+## Customers — MaidenName + DateOfBirth (Migration 005)
+
+Two boilerplate identity columns added to the `Customers` table:
+
+| Column | Type | Notes |
+|---|---|---|
+| MaidenName | NVARCHAR(50) | NULL. Prior surname. |
+| DateOfBirth | DATE | NULL. |
+
+See `scripts/Migrations/Migration_005_Customers_CoreFields.sql`.
+
+---
+
+## CustomerAddresses — AddressType + Geo Fields (Migrations 006, 009)
+
+Additional columns added to `CustomerAddresses`:
+
+| Column | Type | Notes |
+|---|---|---|
+| AddressType | NVARCHAR(20) | Default `primary`. Allowed: `primary`, `secondary`, `mailing`, `vacation`, `other` |
+| Latitude | FLOAT | NULL. Set by API after Melissa validation or manual geocode. |
+| Longitude | FLOAT | NULL. Set by API after Melissa validation or manual geocode. |
+| GeographyPoint | GEOGRAPHY (computed) | `geography::Point(Latitude, Longitude, 4326)` when both are non-null. Not mapped in C# entities — use directly in SQL spatial queries (`STDistance()`, `STWithin()`, etc.). |
+
+A customer may have multiple `IsCurrent = 1` rows, each with a different `AddressType`.
+`IsCurrent = 0` rows are historical (superseded by a later address of the **same** `AddressType`).
+
+**Note on GeographyPoint:** computed columns cannot be added to temporal tables via `ALTER TABLE` without disabling system versioning first. On SSDT-deployed databases this column exists automatically. For manual upgrades, see the comment block in `Migration_009` for the required steps.
+
+See `scripts/Migrations/Migration_006_CustomerAddresses_AddressType.sql` and
+`scripts/Migrations/Migration_009_CustomerAddresses_GeoFields.sql`.
+
+---
+
+## CustomerPhones
+
+Stores multiple phone numbers per customer.
+
+| Column | Type | Notes |
+|---|---|---|
+| Id | UNIQUEIDENTIFIER | PK, `NEWSEQUENTIALID()` |
+| CustomerId | UNIQUEIDENTIFIER | FK → Customers |
+| PhoneNumber | NVARCHAR(30) | |
+| PhoneType | NVARCHAR(20) | `mobile` (default), `home`, `work`, `fax`, `other` |
+| IsPrimary | BIT | 1 = preferred contact number. One per customer enforced at app layer. |
+| IsActive | BIT | Default 1. Soft-delete flag. |
+| CreatedUtcDt | DATETIME2 | |
+| ModifiedUtcDt | DATETIME2 | |
+
+**Index:** `IX_CustomerPhones_CustomerId` on `(CustomerId)`.
+
+**Migration:** `scripts/Migrations/Migration_007_CustomerPhones.sql`
+
+---
+
+## CustomerEmails
+
+Stores multiple email addresses per customer.
+
+| Column | Type | Notes |
+|---|---|---|
+| Id | UNIQUEIDENTIFIER | PK, `NEWSEQUENTIALID()` |
+| CustomerId | UNIQUEIDENTIFIER | FK → Customers |
+| EmailAddress | NVARCHAR(320) | |
+| EmailType | NVARCHAR(20) | `personal` (default), `work`, `other` |
+| IsPrimary | BIT | 1 = preferred contact email. One per customer enforced at app layer. |
+| IsActive | BIT | Default 1. Soft-delete flag. |
+| CreatedUtcDt | DATETIME2 | |
+| ModifiedUtcDt | DATETIME2 | |
+
+**Index:** `IX_CustomerEmails_CustomerId` on `(CustomerId)`.
+
+**Note:** `Customers.Email` is retained as the import deduplication key. `CustomerEmails` is the authoritative multi-value store for all email addresses.
+
+**Migration:** `scripts/Migrations/Migration_008_CustomerEmails.sql`
+
+---
+
 ## Contracts
 
-One row per contract per organisation. Only one may be active at a time
-(filtered unique index).
+Header record per contract per organisation. Only one may be active at a time
+(filtered unique index). Amendments (see `ContractAmendments`) may change the
+end date or add cost to an active, non-expired contract.
+
+`OriginalEndDate` and `OriginalCost` are set at creation and never modified.
+`EndDate` and `TotalCost` are the current effective values, updated whenever
+an amendment is applied.
 
 | Column | Type | Notes |
 |---|---|---|
@@ -368,8 +510,11 @@ One row per contract per organisation. Only one may be active at a time
 | OrganizationId | UNIQUEIDENTIFIER | FK → Organizations |
 | ContractName | NVARCHAR(200) | |
 | ContractNumber | NVARCHAR(100) | NULL — external CRM reference |
-| StartDate | DATE | |
-| EndDate | DATE | NULL = open-ended |
+| StartDate | DATE | Never changed by amendments |
+| OriginalEndDate | DATE | NULL = open-ended. Set at creation, never changed. |
+| EndDate | DATE | Current effective end date — updated by amendments |
+| OriginalCost | DECIMAL(18,2) | NULL. Base contracted amount; never changed. |
+| TotalCost | DECIMAL(18,2) | NULL. `OriginalCost + SUM(AmendmentCost)`; updated by amendments. |
 | IsActive | BIT | Default 1 |
 | Notes | NVARCHAR(1000) | NULL |
 | CreatedDt | DATETIME | |
@@ -380,6 +525,95 @@ One row per contract per organisation. Only one may be active at a time
 **Constraints:**
 - `UQ_Contracts_ActivePerOrg` — filtered unique index `(OrganizationId) WHERE IsActive = 1`
 - `CK_Contracts_Dates` — `EndDate IS NULL OR EndDate >= StartDate`
+- `CK_Contracts_OriginalDates` — `OriginalEndDate IS NULL OR OriginalEndDate >= StartDate`
+- `CK_Contracts_Cost` — `TotalCost IS NULL OR TotalCost >= OriginalCost`
+
+---
+
+## ContractAmendments
+
+One row per amendment applied to a contract. Amendments are only allowed when
+the contract `IsActive = 1 AND EndDate >= today` (enforced at the service layer —
+expired contracts cannot be amended).
+
+Each amendment can change the end date (replacement) and/or add cost (additive).
+At least one of the two must be supplied.
+
+| Column | Type | Notes |
+|---|---|---|
+| Id | UNIQUEIDENTIFIER | PK, `NEWSEQUENTIALID()` |
+| ContractId | UNIQUEIDENTIFIER | FK → Contracts |
+| AmendmentNumber | INT | Sequential per contract: 1, 2, 3… |
+| AmendmentDate | DATE | Date the amendment was signed/executed |
+| PreviousEndDate | DATE NULL | Snapshot of `EndDate` before this amendment |
+| NewEndDate | DATE NULL | Replacement end date. NULL = not changing end date. |
+| AmendmentCost | DECIMAL(18,2) NULL | Additive cost increase. NULL = not changing cost. |
+| Notes | NVARCHAR(1000) | NULL |
+| DocumentFileName | NVARCHAR(260) | NULL — original filename of the uploaded amendment doc |
+| DocumentPath | NVARCHAR(1000) | NULL — storage path or URL |
+| CreatedDt | DATETIME | |
+| CreatedBy | NVARCHAR(200) | |
+
+**Constraints:**
+- `UQ_ContractAmendments_Number` — UNIQUE `(ContractId, AmendmentNumber)`
+- `CK_ContractAmendments_HasChange` — `NewEndDate IS NOT NULL OR AmendmentCost IS NOT NULL`
+- `CK_ContractAmendments_CostPositive` — `AmendmentCost IS NULL OR AmendmentCost > 0`
+
+**When an amendment is applied (service layer):**
+1. Insert row with `PreviousEndDate = Contracts.EndDate` snapshot
+2. If `NewEndDate` supplied → `UPDATE Contracts SET EndDate = NewEndDate`
+3. If `AmendmentCost` supplied → `UPDATE Contracts SET TotalCost = TotalCost + AmendmentCost`
+
+---
+
+## ContractLineItems
+
+Detail line items for a contract, organised by original terms and each amendment.
+`AmendmentId = NULL` means the line item belongs to the original contract.
+`AmendmentId = <id>` means it was introduced by that specific amendment.
+
+| Column | Type | Notes |
+|---|---|---|
+| Id | UNIQUEIDENTIFIER | PK, `NEWSEQUENTIALID()` |
+| ContractId | UNIQUEIDENTIFIER | FK → Contracts |
+| AmendmentId | UNIQUEIDENTIFIER | FK → ContractAmendments. **NULL = original contract.** |
+| LineItemDescription | NVARCHAR(500) | |
+| Quantity | DECIMAL(10,2) | NULL |
+| UnitCost | DECIMAL(18,2) | NULL |
+| TotalCost | DECIMAL(18,2) | NULL |
+| Notes | NVARCHAR(500) | NULL |
+| DisplayOrder | INT | Default 0 |
+| CreatedDt | DATETIME | |
+| CreatedBy | NVARCHAR(200) | |
+
+---
+
+## ContractDocuments
+
+Stores uploaded files (PDFs, Word docs, images) attached to a contract or a specific amendment.
+`AmendmentId = NULL` means the document belongs to the contract header.
+
+Files are stored on disk under `ContractSettings:UploadPath/{contractId}/{storedFileName}`.
+`StoredFileName` is GUID-based (collision-safe); `OriginalFileName` is preserved for display and download.
+
+| Column | Type | Notes |
+|---|---|---|
+| Id | UNIQUEIDENTIFIER | PK, `NEWSEQUENTIALID()` |
+| ContractId | UNIQUEIDENTIFIER | FK → Contracts |
+| AmendmentId | UNIQUEIDENTIFIER | FK → ContractAmendments. **NULL = contract-level document.** |
+| OriginalFileName | NVARCHAR(260) | The filename the user uploaded |
+| StoredFileName | NVARCHAR(260) | GUID-based filename used on disk |
+| StoragePath | NVARCHAR(1000) | Full path on the storage volume |
+| ContentType | NVARCHAR(100) | MIME type — used when serving the file back |
+| FileSizeBytes | BIGINT | File size in bytes |
+| UploadedAt | DATETIME2 | Default `SYSUTCDATETIME()` |
+| UploadedBy | NVARCHAR(200) | |
+
+**Accepted types:** `application/pdf`, `application/msword`, `.docx`, `image/jpeg`, `image/png`
+
+**Storage config:** `ContractSettings:UploadPath` in `appsettings.json` (default `uploads/contracts`).
+
+**Index:** `IX_ContractDocuments_Contract` on `(ContractId, AmendmentId, UploadedAt DESC)`
 
 ---
 
@@ -394,6 +628,7 @@ active simultaneously. Project IDs start at 8000.
 | OrganizationId | UNIQUEIDENTIFIER | FK → Organizations |
 | ContractId | UNIQUEIDENTIFIER | FK → Contracts, NULL (optional) |
 | ProjectName | NVARCHAR(200) | |
+| ProjectType | NVARCHAR(30) | Required. See allowed values below. |
 | MarketingStartDate | DATE | |
 | MarketingEndDate | DATE | NULL = ongoing |
 | IsActive | BIT | Default 1 |
@@ -405,9 +640,69 @@ active simultaneously. Project IDs start at 8000.
 
 **Constraints:**
 - `CK_MarketingProjects_Dates` — `MarketingEndDate IS NULL OR MarketingEndDate >= MarketingStartDate`
+- `CK_MarketingProjects_ProjectType` — enforces the allowed type list
+
+**Allowed `ProjectType` values:**
+`public_university` | `private_university` | `public_high_school` | `private_high_school` | `fraternities` | `sororities` | `military` | `general` | `story_cause`
 
 **Index:** `IX_MarketingProjects_EndDate` on `(MarketingEndDate) WHERE MarketingEndDate IS NOT NULL AND IsActive = 1`
 — supports the dashboard expiring-projects query efficiently.
+
+---
+
+## Segmentations
+
+Named groupings of customers within a marketing project. A project may have
+many segments; customers are assigned via `CustomerSegmentations`.
+
+Segments are created two ways:
+1. **Field split** — admin selects an existing imported field; distinct values become segments
+   and customers are assigned automatically based on their stored value for that field.
+2. **Import file** — a separate CSV/Excel is uploaded containing customer `OriginalId` +
+   segment key columns; customers are matched by `(OrganizationId, OriginalId)`.
+
+| Column | Type | Notes |
+|---|---|---|
+| Id | UNIQUEIDENTIFIER | PK, `NEWSEQUENTIALID()` |
+| OrganizationId | UNIQUEIDENTIFIER | FK → Organizations |
+| ProjectId | INT | FK → MarketingProjects |
+| SegmentationName | NVARCHAR(200) | Display label e.g. "Nursing" |
+| SegmentationKey | NVARCHAR(100) | Normalised key e.g. "nursing" — lowercase, no spaces |
+| Description | NVARCHAR(500) | NULL |
+| IsActive | BIT | Default 1 |
+| DisplayOrder | INT | Default 0 |
+| CreatedDt / CreatedBy / ModifiedDt / ModifiedBy | | Standard audit columns |
+
+**Constraints:**
+- `UQ_Segmentations_ProjectKey` — UNIQUE `(ProjectId, SegmentationKey)`
+
+**Indexes:**
+- `IX_Segmentations_Organization` on `(OrganizationId, IsActive)`
+- `IX_Segmentations_Project` on `(ProjectId, DisplayOrder)`
+
+---
+
+## CustomerSegmentations
+
+Junction table — many-to-many between `Customers` and `Segmentations`.
+A customer may belong to multiple segments within a project.
+
+| Column | Type | Notes |
+|---|---|---|
+| Id | UNIQUEIDENTIFIER | PK, `NEWSEQUENTIALID()` |
+| CustomerId | UNIQUEIDENTIFIER | FK → Customers |
+| SegmentationId | UNIQUEIDENTIFIER | FK → Segmentations |
+| Source | NVARCHAR(20) | `field_split` \| `import_file` \| `manual` |
+| AssignedAt | DATETIME2 | Default `SYSUTCDATETIME()` |
+| AssignedBy | NVARCHAR(200) | NULL |
+
+**Constraints:**
+- `UQ_CustomerSegmentations_CustomerSeg` — UNIQUE `(CustomerId, SegmentationId)`
+- `CK_CustomerSegmentations_Source` — `Source IN ('field_split', 'import_file', 'manual')`
+
+**Indexes:**
+- `IX_CustomerSegmentations_Customer` on `(CustomerId)`
+- `IX_CustomerSegmentations_Segmentation` on `(SegmentationId)`
 
 ---
 
@@ -451,8 +746,9 @@ for auto-reuse on future uploads with identical headers.
 | HeaderFingerprint | NVARCHAR(64) | SHA-256 of sorted headers |
 | CsvHeader | NVARCHAR(200) | |
 | CsvColumnIndex | INT | |
-| MappingType | NVARCHAR(20) | |
-| CustomerFieldName | NVARCHAR(100) | NULL |
+| DestinationTable | NVARCHAR(20) | `customer`, `customer_address`, `field_value`, `skip` |
+| DestinationField | NVARCHAR(100) | NULL for `skip` / split transforms |
+| TransformType | NVARCHAR(30) | `direct` or `split_full_name` |
 | FieldDefinitionId | UNIQUEIDENTIFIER | FK → FieldDefinitions, NULL |
 | DisplayOrder | INT | |
 | LastUsedAt | DATETIME2 | Updated on each reuse |
@@ -464,14 +760,30 @@ for auto-reuse on future uploads with identical headers.
 
 ## Migration Scripts (run in order)
 
+**Deployment model:** SSDT Build items in `dbo/Tables/` are the source of truth for all table
+schemas. On SSDT publish, schema compare generates `CREATE TABLE` for new databases and
+`ALTER TABLE` for changes automatically. Migration scripts are **manual ALTER scripts** for
+upgrading existing databases that were not freshly deployed via SSDT — run them by hand in
+order on any database that predates the corresponding Build item change.
+
+`CustomerPhones` and `CustomerEmails` are fully SSDT-managed (no migration scripts) —
+SSDT creates them on first publish against a database that doesn't have them yet.
+
 ```
-1. (base schema)                                           -- Organizations, Customers, etc.
-2. scripts/Post-Deployment/01_StateOptions.sql             -- 54 US state options
-3. scripts/Post-Deployment/02_HighestSchoolingOptions.sql  -- 7 degree options
-4. scripts/Post-Deployment/DEVOnly_03_Organizations-Fake.sql  -- dev seed data
-5. scripts/Post-Deployment/DevOnly_04_CustomerSampleData.sql  -- dev customer data
-6. scripts/Migrations/Migration_001_CustomerOriginalId.sql -- OriginalId on Customers
-7. scripts/Migrations/Migration_002_ImportBatches_AddColumns.sql -- FileType, DuplicateStrategy, FileStoragePath
+-- Post-deployment seed data (run via SSDT post-deploy or manually)
+1. scripts/Post-Deployment/01_StateOptions.sql                    -- 54 US state options
+2. scripts/Post-Deployment/02_HighestSchoolingOptions.sql         -- 7 degree options
+3. scripts/Post-Deployment/DEVOnly_03_Organizations-Fake.sql      -- dev seed data
+4. scripts/Post-Deployment/DevOnly_04_CustomerSampleData.sql      -- dev customer data
+
+-- Manual ALTER migrations (run in order on existing databases only)
+5.  scripts/Migrations/Migration_001_CustomerOriginalId.sql              -- OriginalId on Customers
+6.  scripts/Migrations/Migration_002_ImportBatches_AddColumns.sql        -- FileType, DuplicateStrategy, FileStoragePath
+7.  scripts/Migrations/Migration_003_FieldDefinitions_Phone.sql          -- DisplayFormat on FieldDefinitions
+8.  scripts/Migrations/Migration_005_Customers_CoreFields.sql            -- MaidenName, DateOfBirth on Customers
+9.  scripts/Migrations/Migration_006_CustomerAddresses_AddressType.sql   -- AddressType on CustomerAddresses
+10. scripts/Migrations/Migration_007_ColumnMappings_Transform.sql        -- DestinationTable/DestinationField/TransformType redesign; creates ImportColumnMappingOutputs and SavedColumnMappingOutputs
+11. scripts/Migrations/Migration_009_CustomerAddresses_GeoFields.sql     -- Latitude, Longitude on CustomerAddresses (GeographyPoint: see note)
 ```
 
 ---

@@ -21,7 +21,8 @@ public class FieldDefinitionService(IFieldDefinitionRepository fieldRepo, IField
 
         foreach (var field in fields)
         {
-            var opts = IsOptionsField(field.FieldType) ? await _optionRepo.GetByFieldIdAsync(field.FieldDefinitionId) : [];
+            var effectiveId = field.OptionsSourceFieldId ?? field.FieldDefinitionId;
+            var opts = IsOptionsField(field.FieldType) ? await _optionRepo.GetByFieldIdAsync(effectiveId) : [];
             result.Add(Map(field, null, opts));
         }
         return result;
@@ -32,7 +33,8 @@ public class FieldDefinitionService(IFieldDefinitionRepository fieldRepo, IField
         var field = await _fieldRepo.GetByIdAsync(fieldDefinitionId);
         if (field is null) return null;
 
-        var opts = IsOptionsField(field.FieldType) ? await _optionRepo.GetByFieldIdAsync(field.FieldDefinitionId) : [];
+        var effectiveId = field.OptionsSourceFieldId ?? field.FieldDefinitionId;
+        var opts = IsOptionsField(field.FieldType) ? await _optionRepo.GetByFieldIdAsync(effectiveId) : [];
 
         FieldSection? section = field.FieldSectionId.HasValue
             ? await _sectionRepo.GetByIdAsync(field.FieldSectionId.Value)
@@ -43,9 +45,12 @@ public class FieldDefinitionService(IFieldDefinitionRepository fieldRepo, IField
 
     public async Task<FieldDefinitionDto> CreateAsync(CreateFieldDefinitionRequest request)
     {
+        var normalizedKey = NormalizeFieldKey(request.FieldKey);
+        request = request with { FieldKey = normalizedKey };
+
         var existing = await _fieldRepo.GetByKeyAsync(request.OrganizationId, request.FieldKey);
         if (existing is not null) throw new InvalidOperationException($"Field key '{request.FieldKey}' already exists for this organization.");
-        
+
         var entity = new FieldDefinition
         {
             FieldDefinitionId   = Guid.NewGuid(),
@@ -63,9 +68,10 @@ public class FieldDefinitionService(IFieldDefinitionRepository fieldRepo, IField
             MaxValue            = request.MaxValue,
             MinLength           = request.MinLength,
             MaxLength           = request.MaxLength,
-            RegexPattern        = request.RegexPattern,
-            DisplayFormat       = request.DisplayFormat,
-            CreatedDt           = DateTime.UtcNow,
+            RegexPattern            = request.RegexPattern,
+            DisplayFormat           = request.DisplayFormat,
+            OptionsSourceFieldId    = request.OptionsSourceFieldId,
+            CreatedDt               = DateTime.UtcNow,
             ModifiedDt          = DateTime.UtcNow
         };
 
@@ -80,7 +86,8 @@ public class FieldDefinitionService(IFieldDefinitionRepository fieldRepo, IField
 
         entity.UpdateFromRequest(request);
         await _fieldRepo.UpdateAsync(entity);
-        var opts = IsOptionsField(entity.FieldType) ? await _optionRepo.GetByFieldIdAsync(entity.FieldDefinitionId) : [];
+        var effectiveId = entity.OptionsSourceFieldId ?? entity.FieldDefinitionId;
+        var opts = IsOptionsField(entity.FieldType) ? await _optionRepo.GetByFieldIdAsync(effectiveId) : [];
 
         return Map(entity, null, opts);
 
@@ -113,14 +120,17 @@ public class FieldDefinitionService(IFieldDefinitionRepository fieldRepo, IField
         foreach (var row in rows.Where(r => r.FieldType is "dropdown" or "multiselect"))
         {
             if (!allOpts.ContainsKey(row.FieldDefinitionId))
-                allOpts[row.FieldDefinitionId] = await _optionRepo.GetByFieldIdAsync(row.FieldDefinitionId);
+            {
+                var effectiveId = row.OptionsSourceFieldId ?? row.FieldDefinitionId;
+                allOpts[row.FieldDefinitionId] = await _optionRepo.GetByFieldIdAsync(effectiveId);
+            }
         }
 
         static string? CurrentValue(FieldPreviewRaw r) => r.FieldType switch
         {
             "number"   => r.ValueNumber?.ToString(),
             "date"     => r.ValueDate?.ToString("yyyy-MM-dd"),
-            "boolean"  => r.ValueBoolean?.ToString(),
+            "checkbox"  => r.ValueBoolean.HasValue ? (r.ValueBoolean.Value ? "1" : "0") : null,
             _          => r.ValueText,
         };
 
@@ -166,6 +176,9 @@ public class FieldDefinitionService(IFieldDefinitionRepository fieldRepo, IField
         };
     }
 
+    private static string NormalizeFieldKey(string key) =>
+        System.Text.RegularExpressions.Regex.Replace(key.ToLowerInvariant().Replace(' ', '_'), @"[^a-z0-9_]", "");
+
     private static FieldDefinitionDto Map(FieldDefinition entity, FieldSection? section, IEnumerable<FieldOption> opts)
     {
         return new FieldDefinitionDto(
@@ -187,7 +200,8 @@ public class FieldDefinitionService(IFieldDefinitionRepository fieldRepo, IField
             MaxLength: entity.MaxLength,
             RegexPattern: entity.RegexPattern,
             DisplayFormat: entity.DisplayFormat,
-            Options: opts.Select(o => new FieldOptionDto(o.OptionId, o.FieldDefinitionId, o.OptionKey, o.OptionLabel, o.DisplayOrder, o.IsActive))
+            Options: opts.Select(o => new FieldOptionDto(o.OptionId, o.FieldDefinitionId, o.OptionKey, o.OptionLabel, o.DisplayOrder, o.IsActive)),
+            OptionsSourceFieldId: entity.OptionsSourceFieldId
         );
     }
 

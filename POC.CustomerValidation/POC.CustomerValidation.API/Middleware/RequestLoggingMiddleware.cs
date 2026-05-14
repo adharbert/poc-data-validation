@@ -13,21 +13,25 @@ public class RequestLoggingMiddleware(RequestDelegate next)
     {
         var correlationId = Guid.NewGuid().ToString();
 
-        context.Request.EnableBuffering();
-
         string requestBody = "";
 
-        if (context.Request.ContentLength > 0 &&
-            context.Request.Body.CanRead)
+        var isMultipart = context.Request.ContentType?.StartsWith("multipart/", StringComparison.OrdinalIgnoreCase) ?? false;
+
+        if (!isMultipart)
         {
-            using var reader = new StreamReader(
-                context.Request.Body,
-                Encoding.UTF8,
-                leaveOpen: true);
+            context.Request.EnableBuffering();
 
-            requestBody = await reader.ReadToEndAsync();
+            if (context.Request.ContentLength > 0 && context.Request.Body.CanRead)
+            {
+                using var reader = new StreamReader(
+                    context.Request.Body,
+                    Encoding.UTF8,
+                    leaveOpen: true);
 
-            context.Request.Body.Position = 0;
+                requestBody = await reader.ReadToEndAsync();
+
+                context.Request.Body.Position = 0;
+            }
         }
 
         using (Serilog.Context.LogContext.PushProperty("CorrelationId", correlationId))

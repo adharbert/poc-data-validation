@@ -1,13 +1,15 @@
 CREATE TABLE [dbo].[Customers] (
 	[Id]					[uniqueidentifier]	NOT NULL	DEFAULT (newsequentialid()),
-	[OriginalId]			nvarchar(12)		NULL,
+	[OriginalId]			nvarchar(100)		NULL,
 	[FirstName]				nvarchar(30)		NOT NULL,
 	[LastName]				nvarchar(50)		NOT NULL,
 	[MiddleName]			nvarchar(30)		NULL,
+	[MaidenName]			nvarchar(50)		NULL,
+	[DateOfBirth]			date				NULL,
 	[CustomerCode]			[nvarchar](26)		NOT NULL,
 	[OrganizationId]		[uniqueidentifier]	NOT NULL,
 	[Email]					nvarchar(150)		NULL,
-	[Phone]					nvarchar(11)		NULL,
+	[Phone]					nvarchar(20)		NULL,
 	[IsActive]				bit					NULL		DEFAULT(1),
 	[CreatedDt]				datetime			NOT NULL	DEFAULT(GETUTCDATE()),
 	[ModifiedDt]			datetime			NOT NULL	DEFAULT(GETUTCDATE()),
@@ -25,4 +27,8 @@ WITH (SYSTEM_VERSIONING = ON (HISTORY_TABLE=[dbo].[Customers_History], DATA_CONS
 GO
 
 CREATE UNIQUE INDEX IX_CustomerCode ON [dbo].[Customers]([CustomerCode]);
+GO
+
+CREATE INDEX [IX_Customers_OriginalId] ON dbo.Customers (OrganizationId, OriginalId)
+    WHERE OriginalId IS NOT NULL;
 GO

@@ -7,13 +7,15 @@ public record OrganizationDto(
     Guid        OrganizationId,
     string      OrganizationName,
     string      OrganizationCode,
-    string?     FilingName, 
+    string?     FilingName,
     string?     MarketingName,
     string?     Abbreviation,
     string?     Website,
     string?     Phone,
     string?     CompanyEmail,
     bool        IsActive,
+    bool        RequiresIsolatedDatabase,
+    string?     DatabaseProvisioningStatus,
     DateTime    CreatedAt,
     string      CreatedBy,
     DateTime    UpdatedAt,
@@ -27,7 +29,8 @@ public record CreateOrganizationRequest(
     string? Abbreviation,
     string? Website,
     string? Phone,
-    string? CompanyEmail
+    string? CompanyEmail,
+    bool    RequiresIsolatedDatabase = false
 );
 
 public record UpdateOrganizationRequest(
@@ -39,7 +42,8 @@ public record UpdateOrganizationRequest(
     string? Website,
     string? Phone,
     string? CompanyEmail,
-    bool?   IsActive
+    bool?   IsActive,
+    bool    RequiresIsolatedDatabase = false
 );
 
 
@@ -144,14 +148,15 @@ public record FieldDefinitionDto(
     string?     HelpText,
     bool        IsRequired,
     bool        IsActive,
-    int         DisplayOrder, 
+    int         DisplayOrder,
     decimal?    MinValue,
     decimal?    MaxValue,
     int?        MinLength,
     int?        MaxLength,
     string?     RegexPattern,
     string?     DisplayFormat,
-    IEnumerable<FieldOptionDto> Options
+    IEnumerable<FieldOptionDto> Options,
+    Guid?       OptionsSourceFieldId = null
 );
 
 
@@ -164,14 +169,15 @@ public record CreateFieldDefinitionRequest(
     string      FieldType,
     string?     PlaceholderText,
     string?     HelpText,
-    bool        IsRequired      = false,
-    int         DisplayOrder    = 0,
-    decimal?    MinValue        = null,
-    decimal?    MaxValue        = null,
-    int?        MinLength       = null,
-    int?        MaxLength       = null,
-    string?     RegexPattern    = null,
-    string?     DisplayFormat   = null
+    bool        IsRequired              = false,
+    int         DisplayOrder            = 0,
+    decimal?    MinValue                = null,
+    decimal?    MaxValue                = null,
+    int?        MinLength               = null,
+    int?        MaxLength               = null,
+    string?     RegexPattern            = null,
+    string?     DisplayFormat           = null,
+    Guid?       OptionsSourceFieldId    = null
 );
 
 
@@ -190,7 +196,8 @@ public record UpdateFieldDefinitionRequest(
     int?        MinLength,
     int?        MaxLength,
     string?     RegexPattern,
-    string?     DisplayFormat
+    string?     DisplayFormat,
+    Guid?       OptionsSourceFieldId = null
 );
 
 
@@ -294,36 +301,45 @@ public record ApiError(
 
 public record CustomerDto
 {
-    public Guid     CustomerId      { get; init; }
-    public Guid     OrganizationId  { get; init; }
-    public string   FirstName       { get; init; } = default!;
-    public string   LastName        { get; init; } = default!;
-    public string?  MiddleName      { get; init; }
-    public string   CustomerCode    { get; init; } = default!;
-    public string?  OriginalId      { get; init; }
-    public string?  Email           { get; init; }
-    public bool     IsActive        { get; init; }
-    public DateTime CreatedDate     { get; init; }
-    public DateTime ModifiedDate    { get; init; }
+    public Guid      CustomerId      { get; init; }
+    public Guid      OrganizationId  { get; init; }
+    public string    FirstName       { get; init; } = default!;
+    public string    LastName        { get; init; } = default!;
+    public string?   MiddleName      { get; init; }
+    public string?   MaidenName      { get; init; }
+    public DateOnly? DateOfBirth     { get; init; }
+    public string    CustomerCode    { get; init; } = default!;
+    public string?   OriginalId      { get; init; }
+    public string?   Email           { get; init; }
+    public string?   Phone           { get; init; }
+    public bool      IsActive        { get; init; }
+    public DateTime  CreatedDate     { get; init; }
+    public DateTime  ModifiedDate    { get; init; }
 }
 
 public record CreateCustomerRequest
 {
-    public string   FirstName   { get; init; } = default!;
-    public string   LastName    { get; init; } = default!;
-    public string?  MiddleName  { get; init; }
-    public string?  OriginalId  { get; init; }
-    public string?  Email       { get; init; }
+    public string    FirstName   { get; init; } = default!;
+    public string    LastName    { get; init; } = default!;
+    public string?   MiddleName  { get; init; }
+    public string?   MaidenName  { get; init; }
+    public DateOnly? DateOfBirth { get; init; }
+    public string?   OriginalId  { get; init; }
+    public string?   Email       { get; init; }
+    public string?   Phone       { get; init; }
 }
 
 public record UpdateCustomerRequest
 {
-    public string   FirstName   { get; init; } = default!;
-    public string   LastName    { get; init; } = default!;
-    public string?  MiddleName  { get; init; }
-    public string?  OriginalId  { get; init; }
-    public string?  Email       { get; init; }
-    public bool     IsActive    { get; init; }
+    public string    FirstName   { get; init; } = default!;
+    public string    LastName    { get; init; } = default!;
+    public string?   MiddleName  { get; init; }
+    public string?   MaidenName  { get; init; }
+    public DateOnly? DateOfBirth { get; init; }
+    public string?   OriginalId  { get; init; }
+    public string?   Email       { get; init; }
+    public string?   Phone       { get; init; }
+    public bool      IsActive    { get; init; }
 }
 
 
@@ -378,6 +394,7 @@ public record MarketingProjectDto
     public Guid         OrganizationId      { get; init; }
     public string       OrganizationName    { get; init; } = default!;
     public Guid?        ContractId          { get; init; }
+    public string?      ProjectType         { get; init; }
     public string       ProjectName         { get; init; } = default!;
     public DateOnly     MarketingStartDate  { get; init; }
     public DateOnly?    MarketingEndDate    { get; init; }
@@ -393,6 +410,7 @@ public record CreateMarketingProjectRequest
 {
     public Guid?        ContractId          { get; init; }
     public string       ProjectName         { get; init; } = default!;
+    public string?      ProjectType         { get; init; }
     public DateOnly     MarketingStartDate  { get; init; }
     public DateOnly?    MarketingEndDate    { get; init; }
     public string?      Notes               { get; init; }
@@ -403,6 +421,7 @@ public record UpdateMarketingProjectRequest
 {
     public Guid?        ContractId          { get; init; }
     public string       ProjectName         { get; init; } = default!;
+    public string?      ProjectType         { get; init; }
     public DateOnly     MarketingStartDate  { get; init; }
     public DateOnly?    MarketingEndDate    { get; init; }
     public bool         IsActive            { get; init; }
@@ -455,6 +474,7 @@ public record ImportBatchDto
     public Guid         OrganizationId      { get; init; }
     public string       FileName            { get; init; } = default!;
     public string?      FileType            { get; init; }
+    public string[]     FileHeaders         { get; init; } = [];
     public int          TotalRows           { get; init; }
     public int          ImportedRows        { get; init; }
     public int          SkippedRows         { get; init; }
@@ -469,11 +489,27 @@ public record ImportBatchDto
 
 public record UploadImportResponseDto
 {
-    public Guid                             BatchId         { get; init; }
-    public string[]                         Headers         { get; init; } = [];
-    public int                              RowCount        { get; init; }
-    public bool                             HasSavedMappings { get; init; }
-    public IEnumerable<ColumnMatchResultDto> ColumnMatches  { get; init; } = [];
+    public Guid                              BatchId              { get; init; }
+    public string                            FileName             { get; init; } = default!;
+    public string[]                          Headers              { get; init; } = [];
+    public int                               RowCount             { get; init; }
+    public bool                              HasSavedMappings     { get; init; }
+    public IEnumerable<ColumnMatchResultDto> ColumnMatches        { get; init; } = [];
+    /// <summary>True when saved mappings exist but expected columns are missing from this upload.</summary>
+    public bool                              SchemaDrift          { get; init; }
+    /// <summary>Columns that were in the previous saved mapping but are absent from this file.</summary>
+    public string[]                          MissingMappedColumns { get; init; } = [];
+    /// <summary>Columns present in this file that were not in the previous saved mapping.</summary>
+    public string[]                          NewColumns           { get; init; } = [];
+}
+
+public record ColumnMappingOutputDto
+{
+    public string   OutputToken         { get; init; } = default!;
+    public string   DestinationTable    { get; init; } = "skip";
+    public string?  DestinationField    { get; init; }
+    public Guid?    FieldDefinitionId   { get; init; }
+    public int      SortOrder           { get; init; }
 }
 
 public record ColumnMatchResultDto
@@ -481,11 +517,13 @@ public record ColumnMatchResultDto
     public int      ColumnIndex         { get; init; }
     public string   CsvHeader           { get; init; } = default!;
     public string   MatchStatus         { get; init; } = default!;  // matched | unmatched | skipped
-    public string?  MappingType         { get; init; }
-    public string?  CustomerFieldName   { get; init; }
+    public string?  DestinationTable    { get; init; }
+    public string?  DestinationField    { get; init; }
     public Guid?    FieldDefinitionId   { get; init; }
+    public string?  TransformType       { get; init; }
     public string?  FieldLabel          { get; init; }
     public bool     IsAutoMatched       { get; init; }
+    public IEnumerable<ColumnMappingOutputDto> Outputs { get; init; } = [];
 }
 
 public record SaveMappingsRequest
@@ -496,12 +534,14 @@ public record SaveMappingsRequest
 
 public record ColumnMappingDto
 {
-    public int      ColumnIndex         { get; init; }
+    public int      CsvColumnIndex      { get; init; }
     public string   CsvHeader           { get; init; } = default!;
-    public string   MappingType         { get; init; } = default!;
-    public string?  CustomerFieldName   { get; init; }
+    public string   DestinationTable    { get; init; } = "skip";
+    public string?  DestinationField    { get; init; }
     public Guid?    FieldDefinitionId   { get; init; }
-    public bool     SaveForReuse        { get; init; }
+    public string   TransformType       { get; init; } = "direct";
+    public bool     SaveForReuse        { get; init; } = true;
+    public IEnumerable<ColumnMappingOutputDto> Outputs { get; init; } = [];
 }
 
 public record ImportPreviewDto
@@ -578,6 +618,9 @@ public record CustomerAddressDto
     public string   State               { get; init; } = default!;
     public string   PostalCode          { get; init; } = default!;
     public string   Country             { get; init; } = "US";
+    public string   AddressType         { get; init; } = "primary";
+    public double?  Latitude            { get; init; }
+    public double?  Longitude           { get; init; }
     public bool     MelissaValidated    { get; init; }
     public bool     CustomerConfirmed   { get; init; }
     public bool     IsCurrent           { get; init; }
@@ -593,6 +636,189 @@ public record CreateCustomerAddressRequest
     public string   State           { get; init; } = default!;
     public string   PostalCode      { get; init; } = default!;
     public string   Country         { get; init; } = "US";
+    public string   AddressType     { get; init; } = "primary";
+    public double?  Latitude        { get; init; }
+    public double?  Longitude       { get; init; }
+}
+
+// -------------------------------------------------------
+// Customer Phone DTOs
+// -------------------------------------------------------
+
+public record CustomerPhoneDto
+{
+    public Guid     PhoneId         { get; init; }
+    public Guid     CustomerId      { get; init; }
+    public string   PhoneNumber     { get; init; } = default!;
+    public string   PhoneType       { get; init; } = default!;
+    public bool     IsPrimary       { get; init; }
+    public bool     IsActive        { get; init; }
+    public DateTime CreatedUtcDt    { get; init; }
+    public DateTime ModifiedUtcDt   { get; init; }
+}
+
+public record CreateCustomerPhoneRequest
+{
+    public string   PhoneNumber     { get; init; } = default!;
+    public string   PhoneType       { get; init; } = "mobile";
+    public bool     IsPrimary       { get; init; }
+}
+
+public record UpdateCustomerPhoneRequest
+{
+    public string   PhoneNumber     { get; init; } = default!;
+    public string   PhoneType       { get; init; } = default!;
+    public bool     IsPrimary       { get; init; }
+    public bool     IsActive        { get; init; }
+}
+
+// -------------------------------------------------------
+// Customer Email DTOs
+// -------------------------------------------------------
+
+public record CustomerEmailDto
+{
+    public Guid     EmailId         { get; init; }
+    public Guid     CustomerId      { get; init; }
+    public string   EmailAddress    { get; init; } = default!;
+    public string   EmailType       { get; init; } = default!;
+    public bool     IsPrimary       { get; init; }
+    public bool     IsActive        { get; init; }
+    public DateTime CreatedUtcDt    { get; init; }
+    public DateTime ModifiedUtcDt   { get; init; }
+}
+
+public record CreateCustomerEmailRequest
+{
+    public string   EmailAddress    { get; init; } = default!;
+    public string   EmailType       { get; init; } = "personal";
+    public bool     IsPrimary       { get; init; }
+}
+
+
+// -------------------------------------------------------
+// Field Library DTOs
+// -------------------------------------------------------
+
+public record LibraryFieldOptionDto
+{
+    public Guid     Id              { get; init; }
+    public Guid     LibraryFieldId  { get; init; }
+    public string   OptionKey       { get; init; } = default!;
+    public string   OptionLabel     { get; init; } = default!;
+    public int      DisplayOrder    { get; init; }
+    public bool     IsActive        { get; init; }
+}
+
+public record LibraryFieldDto
+{
+    public Guid     Id              { get; init; }
+    public string   FieldKey        { get; init; } = default!;
+    public string   FieldLabel      { get; init; } = default!;
+    public string   FieldType       { get; init; } = default!;
+    public string?  PlaceHolderText { get; init; }
+    public string?  HelpText        { get; init; }
+    public bool     IsRequired      { get; init; }
+    public int      DisplayOrder    { get; init; }
+    public decimal? MinValue        { get; init; }
+    public decimal? MaxValue        { get; init; }
+    public int?     MinLength       { get; init; }
+    public int?     MaxLength       { get; init; }
+    public string?  RegExPattern    { get; init; }
+    public string?  DisplayFormat   { get; init; }
+    public bool     IsActive        { get; init; }
+    public IEnumerable<LibraryFieldOptionDto> Options { get; init; } = [];
+}
+
+public record LibrarySectionDto
+{
+    public Guid     Id              { get; init; }
+    public string   SectionName     { get; init; } = default!;
+    public string?  Description     { get; init; }
+    public int      DisplayOrder    { get; init; }
+    public bool     IsActive        { get; init; }
+    public IEnumerable<LibraryFieldDto> Fields { get; init; } = [];
+}
+
+public record CreateLibrarySectionRequest
+{
+    public string   SectionName     { get; init; } = default!;
+    public string?  Description     { get; init; }
+    public int      DisplayOrder    { get; init; }
+}
+
+public record UpdateLibrarySectionRequest
+{
+    public string   SectionName     { get; init; } = default!;
+    public string?  Description     { get; init; }
+    public int      DisplayOrder    { get; init; }
+    public bool     IsActive        { get; init; }
+}
+
+public record AssignLibraryFieldsRequest
+{
+    public IEnumerable<LibraryFieldOrderItem> Fields { get; init; } = [];
+}
+
+public record LibraryFieldOrderItem
+{
+    public Guid LibraryFieldId  { get; init; }
+    public int  DisplayOrder    { get; init; }
+}
+
+public record CreateLibraryFieldRequest
+{
+    public string   FieldKey        { get; init; } = default!;
+    public string   FieldLabel      { get; init; } = default!;
+    public string   FieldType       { get; init; } = default!;
+    public string?  PlaceHolderText { get; init; }
+    public string?  HelpText        { get; init; }
+    public bool     IsRequired      { get; init; }
+    public int      DisplayOrder    { get; init; }
+    public decimal? MinValue        { get; init; }
+    public decimal? MaxValue        { get; init; }
+    public int?     MinLength       { get; init; }
+    public int?     MaxLength       { get; init; }
+    public string?  RegExPattern    { get; init; }
+    public string?  DisplayFormat   { get; init; }
+}
+
+public record UpdateLibraryFieldRequest
+{
+    public string   FieldLabel      { get; init; } = default!;
+    public string   FieldType       { get; init; } = default!;
+    public string?  PlaceHolderText { get; init; }
+    public string?  HelpText        { get; init; }
+    public bool     IsRequired      { get; init; }
+    public int      DisplayOrder    { get; init; }
+    public decimal? MinValue        { get; init; }
+    public decimal? MaxValue        { get; init; }
+    public int?     MinLength       { get; init; }
+    public int?     MaxLength       { get; init; }
+    public string?  RegExPattern    { get; init; }
+    public string?  DisplayFormat   { get; init; }
+    public bool     IsActive        { get; init; }
+}
+
+public record ImportFromLibraryRequest
+{
+    public Guid                 OrganizationId  { get; init; }
+    public IEnumerable<Guid>    SectionIds      { get; init; } = [];
+}
+
+public record ImportFromLibraryResult
+{
+    public int  SectionsCreated { get; init; }
+    public int  FieldsCreated   { get; init; }
+    public int  OptionsCreated  { get; init; }
+}
+
+public record UpdateCustomerEmailRequest
+{
+    public string   EmailAddress    { get; init; } = default!;
+    public string   EmailType       { get; init; } = default!;
+    public bool     IsPrimary       { get; init; }
+    public bool     IsActive        { get; init; }
 }
 
 // -------------------------------------------------------
@@ -615,3 +841,130 @@ public record MelissaValidationResult
 
 
 
+// -------------------------------------------------------
+// Ingestion Pipeline DTOs
+// -------------------------------------------------------
+
+public record IngestionJobDto
+{
+    public Guid         Id                  { get; init; }
+    public Guid         OrganizationId      { get; init; }
+    public string       FileName            { get; init; } = default!;
+    public string       FileType            { get; init; } = default!;
+    public long         FileSizeBytes       { get; init; }
+    public string       UploadedBy          { get; init; } = default!;
+    public DateTime     UploadedAt          { get; init; }
+    public string       Status              { get; init; } = default!;
+    public string?      Tier                { get; init; }
+    public int?         TotalRows           { get; init; }
+    public int?         PassedRows          { get; init; }
+    public int?         FlaggedRows         { get; init; }
+    public int?         FailedRows          { get; init; }
+    public string?      ErrorMessage        { get; init; }
+    public DateTime?    CompletedAt         { get; init; }
+}
+
+public record IngestionStagingRowDto
+{
+    public Guid         Id              { get; init; }
+    public Guid         IngestionJobId  { get; init; }
+    public int          RowNumber       { get; init; }
+    public string       RowJson         { get; init; } = default!;
+    public decimal?     ConfidenceScore { get; init; }
+    public string       Status          { get; init; } = default!;
+    public string?      FlagReasons     { get; init; }
+    public string?      ReviewedBy      { get; init; }
+    public DateTime?    ReviewedAt      { get; init; }
+}
+
+public record ReviewStagingRowRequest
+{
+    public string   Action      { get; init; } = default!;  // approve | reject
+    public string   ReviewedBy  { get; init; } = "System";
+    public string?  Reason      { get; init; }
+}
+
+public record CommitIngestionJobRequest
+{
+    public string CommittedBy { get; init; } = "System";
+}
+
+// -------------------------------------------------------
+
+// -------------------------------------------------------
+// Contract Documents
+// -------------------------------------------------------
+
+public record ContractDocumentDto
+{
+    public Guid     DocumentId       { get; init; }
+    public Guid     ContractId       { get; init; }
+    public Guid?    AmendmentId      { get; init; }
+    public string   OriginalFileName { get; init; } = default!;
+    public string   ContentType      { get; init; } = default!;
+    public long     FileSizeBytes    { get; init; }
+    public DateTime UploadedAt       { get; init; }
+    public string   UploadedBy       { get; init; } = default!;
+}
+
+public record UploadContractDocumentRequest
+{
+    public Guid?  AmendmentId { get; init; }
+    public string UploadedBy  { get; init; } = "System";
+}
+
+// -------------------------------------------------------
+// FieldOptionAlias DTOs
+// -------------------------------------------------------
+
+public record FieldOptionAliasDto
+{
+    public Guid     Id                  { get; init; }
+    public Guid     OrganizationId      { get; init; }
+    public Guid     FieldDefinitionId   { get; init; }
+    public string   AliasValue          { get; init; } = default!;
+    public string   CanonicalValue      { get; init; } = default!;
+    public DateTime CreatedDt           { get; init; }
+}
+
+public record SaveAliasDto
+{
+    public Guid     FieldDefinitionId   { get; init; }
+    public string   AliasValue          { get; init; } = default!;
+    public string   CanonicalValue      { get; init; } = default!;
+}
+
+public record BulkSaveAliasesRequest
+{
+    public List<SaveAliasDto> Aliases { get; init; } = [];
+}
+
+// -------------------------------------------------------
+// Import Value Mapping DTOs
+// -------------------------------------------------------
+
+public record ValueMappingColumnDto
+{
+    public string               CsvHeader           { get; init; } = default!;
+    public int                  CsvColumnIndex      { get; init; }
+    public Guid                 FieldDefinitionId   { get; init; }
+    public string               FieldLabel          { get; init; } = default!;
+    public string               FieldType           { get; init; } = default!;
+    public List<string>         KnownOptions        { get; init; } = [];
+    public List<FieldOptionAliasDto> ExistingAliases { get; init; } = [];
+    public List<string>         UnresolvedValues    { get; init; } = [];
+}
+
+public record ValueMappingResponseDto
+{
+    public bool                         HasUnresolved   { get; init; }
+    public List<ValueMappingColumnDto>  Columns         { get; init; } = [];
+}
+
+// -------------------------------------------------------
+
+public record SetStatusRequest
+{
+    public bool IsActive { get; init; }
+    public string ModifiedBy { get; init; } = "System";
+}

@@ -11,10 +11,13 @@ public class Organization
     public string?      Website             { get; set; }
     public string?      Phone               { get; set; }
     public string?      CompanyEmail        { get; set; }
-    public bool?        IsActive            { get; set; } = true;
-    public DateTime?    CreatedDate         { get; set; }
-    public string       CreatedBy           { get; set; } = default!;
-    public DateTime?    ModifiedDate        { get; set; }
-    public string?      ModifiedBy          { get; set; }
+    public bool?        IsActive                    { get; set; } = true;
+    public bool         RequiresIsolatedDatabase    { get; set; } = false;
+    public string?      IsolatedConnectionString    { get; set; }
+    public string?      DatabaseProvisioningStatus  { get; set; }
+    public DateTime?    CreatedDate                 { get; set; }
+    public string       CreatedBy                   { get; set; } = default!;
+    public DateTime?    ModifiedDate                { get; set; }
+    public string?      ModifiedBy                  { get; set; }
 
 }

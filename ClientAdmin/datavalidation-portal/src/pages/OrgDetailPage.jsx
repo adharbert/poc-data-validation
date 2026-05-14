@@ -9,6 +9,26 @@ import { fmtDate, fmtPhone } from '@/utils/dates.js'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
+function provisioningAlertVariant(status) {
+  switch (status) {
+    case 'ready':        return 'success'
+    case 'provisioning': return 'primary'
+    case 'pending':      return 'warning'
+    case 'failed':       return 'danger'
+    default:             return 'secondary'
+  }
+}
+
+function provisioningStatusLabel(status) {
+  switch (status) {
+    case 'ready':        return 'Dedicated database provisioned and ready.'
+    case 'provisioning': return 'Dedicated database is being provisioned…'
+    case 'pending':      return 'Dedicated database provisioning is queued.'
+    case 'failed':       return 'Dedicated database provisioning failed. Contact your administrator.'
+    default:             return status ?? 'Unknown'
+  }
+}
+
 function fmt(dateStr) {
   return fmtDate(dateStr)
 }
@@ -206,6 +226,7 @@ export default function OrgDetailPage() {
         subtitle={
           <span className="d-flex flex-wrap align-items-center gap-3" style={{ fontSize: '.875rem', color: '#6b7280' }}>
             <code>{org.organizationCode}</code>
+            {org.abbreviation && <span style={{ fontWeight: 600 }}>{org.abbreviation}</span>}
             {org.phone      && <span>📞 {fmtPhone(org.phone)}</span>}
             {org.companyEmail && <span>✉️ {org.companyEmail}</span>}
             {org.website    && <a href={org.website} target="_blank" rel="noopener noreferrer" className="text-decoration-none" style={{ color: '#1a56db' }}>🌐 Website</a>}
@@ -218,6 +239,13 @@ export default function OrgDetailPage() {
           </Link>
         }
       />
+
+      {org.requiresIsolatedDatabase && (
+        <div className={`alert alert-${provisioningAlertVariant(org.databaseProvisioningStatus)} py-2 px-3 mb-4 d-flex align-items-center gap-2`} role="alert">
+          <span>🗄️</span>
+          <span><strong>Isolated Database:</strong> {provisioningStatusLabel(org.databaseProvisioningStatus)}</span>
+        </div>
+      )}
 
       {/* Stat cards */}
       <div className="row g-3 mb-4">
@@ -280,6 +308,16 @@ export default function OrgDetailPage() {
       <div className="admin-card mb-0">
         <h2 className="org-section-title mb-3">Manage Organisation</h2>
         <div className="org-nav-tiles">
+          <NavTile
+            to={`/organizations/${organizationId}/contracts`}
+            icon="📄" label="Contracts"
+            desc="Manage contracts and upload supporting documents"
+          />
+          <NavTile
+            to={`/organizations/${organizationId}/projects`}
+            icon="📁" label="Projects"
+            desc="Create and manage marketing projects"
+          />
           <NavTile
             to={`/organizations/${organizationId}/customers`}
             icon="👥" label="Customers"

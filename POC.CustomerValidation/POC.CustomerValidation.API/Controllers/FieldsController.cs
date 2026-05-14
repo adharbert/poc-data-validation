@@ -63,6 +63,22 @@ public class FieldsController(IFieldDefinitionService services, ILogger<FieldsCo
         return Ok(field);
     }
 
+    /// <summary>
+    /// Create a field definition scoped to an organisation route segment.
+    /// The organisationId in the route ensures the TenantResolutionMiddleware routes
+    /// the connection to the correct isolated database before the service runs.
+    /// </summary>
+    [HttpPost("~/api/organisations/{organisationId:guid}/fields")]
+    [EndpointSummary("FieldDefinition POST create — org-scoped route")]
+    [ProducesResponseType(typeof(FieldDefinitionDto), StatusCodes.Status201Created)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> CreateForOrg(Guid organisationId, [FromBody] CreateFieldDefinitionRequest request)
+    {
+        _log.LogInformation("Create field for org {OrgId} — FieldKey: {FieldKey}", organisationId, request.FieldKey);
+        var field = await _services.CreateAsync(request with { OrganizationId = organisationId });
+        return Ok(field);
+    }
+
 
 
     /// <summary>

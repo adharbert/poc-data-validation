@@ -69,9 +69,10 @@ public class FieldValueRepository(IDbConnectionFactory db) : IFieldValueReposito
 
         const string sql = """
             MERGE FieldValues AS target
-            USING (SELECT @CustomerId, @FieldDefinitionId, @ValueText, @ValueNumber, @ValueDate, @ValueDatetime, @ValueBoolean, @ConfirmedAt, @ConfirmedBy, @FlaggedAt, @FlagNote) AS source
+            USING (SELECT @CustomerId AS CustomerId, @FieldDefinitionId AS FieldDefinitionId, @ValueText AS ValueText, @ValueNumber AS ValueNumber, @ValueDate AS ValueDate, @ValueDatetime AS ValueDatetime, @ValueBoolean AS ValueBoolean, @ConfirmedAt AS ConfirmedAt, @ConfirmedBy AS ConfirmedBy, @FlaggedAt AS FlaggedAt, @FlagNote AS FlagNote) AS source
                 ON target.CustomerId = @CustomerId AND target.FieldDefinitionId = @FieldDefinitionId
             WHEN MATCHED THEN
+                UPDATE SET
                 target.ValueText        = @ValueText
                 , target.ValueNumber    = @ValueNumber
                 , target.ValueDate      = @ValueDate
@@ -83,9 +84,9 @@ public class FieldValueRepository(IDbConnectionFactory db) : IFieldValueReposito
                 , target.FlagNote       = @FlagNote
                 , target.ModifiedDt     = @ModifiedDt
             WHEN NOT MATCHED THEN
-                INSERT (FieldValueId,   CustomerId,     FieldDefinitionId,  ValueText,  ValueNumber,    ValueDate,  ValueDatetime,  ValueBoolean,   ConfirmedAt,    ConfirmedBy,    FlaggedAt,  FlagNote,   CreatedDt,      ModifiedDt)
-                VALUES (NEWID(),        @CustomerId,    @FieldDefinitionId, @ValueText, @ValueNumber,   @ValueDate, @ValueDatetime, @ValueBoolean,  @ConfirmedAt,   @ConfirmedBy,   @FlaggedAt, @FlagNote,  GETUTCDATE(),   @ModifiedDt)
-            OUTPUT inserted.FieldValueId;
+                INSERT (Id,     CustomerId,     FieldDefinitionId,  ValueText,  ValueNumber,    ValueDate,  ValueDatetime,  ValueBoolean,   ConfirmedAt,    ConfirmedBy,    FlaggedAt,  FlagNote,   CreatedDt,      ModifiedDt)
+                VALUES (NEWID(), @CustomerId,   @FieldDefinitionId, @ValueText, @ValueNumber,   @ValueDate, @ValueDatetime, @ValueBoolean,  @ConfirmedAt,   @ConfirmedBy,   @FlaggedAt, @FlagNote,  GETUTCDATE(),   @ModifiedDt)
+            OUTPUT inserted.Id;
             """;
 
         using var conn = _db.CreateConnection();

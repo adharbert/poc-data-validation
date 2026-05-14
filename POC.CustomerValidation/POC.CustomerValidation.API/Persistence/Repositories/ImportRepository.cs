@@ -120,9 +120,10 @@ public class ImportRepository(IDbConnectionFactory db) : IImportRepository
                 ,   ImportBatchId
                 ,   CsvHeader
                 ,   CsvColumnIndex
-                ,   MappingType
-                ,   CustomerFieldName
+                ,   DestinationTable
+                ,   DestinationField
                 ,   FieldDefinitionId
+                ,   TransformType
                 ,   IsAutoMatched
                 ,   IsRequired
                 ,   SavedForReuse
@@ -135,25 +136,57 @@ public class ImportRepository(IDbConnectionFactory db) : IImportRepository
         return await conn.QueryAsync<ImportColumnMapping>(sql, new { BatchId = batchId });
     }
 
+    public async Task<IEnumerable<ImportColumnMappingOutput>> GetMappingOutputsByBatchIdAsync(Guid batchId)
+    {
+        const string sql = """
+            SELECT  o.Id                AS OutputId
+                ,   o.MappingId
+                ,   o.OutputToken
+                ,   o.DestinationTable
+                ,   o.DestinationField
+                ,   o.FieldDefinitionId
+                ,   o.SortOrder
+            FROM    ImportColumnMappingOutputs o
+            INNER JOIN ImportColumnMappings m ON m.Id = o.MappingId
+            WHERE   m.ImportBatchId = @BatchId
+            ORDER BY o.MappingId, o.SortOrder
+            """;
+        using var conn = _db.CreateConnection();
+        return await conn.QueryAsync<ImportColumnMappingOutput>(sql, new { BatchId = batchId });
+    }
+
     public async Task SaveMappingsAsync(Guid batchId, IEnumerable<ImportColumnMapping> mappings)
     {
-        const string deleteSql = "DELETE FROM ImportColumnMappings WHERE ImportBatchId = @BatchId";
-        const string insertSql = """
+        const string deleteSql    = "DELETE FROM ImportColumnMappings WHERE ImportBatchId = @BatchId";
+        const string insertMapSql = """
             INSERT INTO ImportColumnMappings
-                (Id, ImportBatchId, CsvHeader, CsvColumnIndex, MappingType, CustomerFieldName,
-                 FieldDefinitionId, IsAutoMatched, IsRequired, SavedForReuse, DisplayOrder)
+                (Id, ImportBatchId, CsvHeader, CsvColumnIndex, DestinationTable, DestinationField,
+                 FieldDefinitionId, TransformType, IsAutoMatched, IsRequired, SavedForReuse, DisplayOrder)
             VALUES
-                (NEWID(), @ImportBatchId, @CsvHeader, @CsvColumnIndex, @MappingType, @CustomerFieldName,
-                 @FieldDefinitionId, @IsAutoMatched, @IsRequired, @SavedForReuse, @DisplayOrder)
+                (@MappingId, @ImportBatchId, @CsvHeader, @CsvColumnIndex, @DestinationTable, @DestinationField,
+                 @FieldDefinitionId, @TransformType, @IsAutoMatched, @IsRequired, @SavedForReuse, @DisplayOrder)
+            """;
+        const string insertOutSql = """
+            INSERT INTO ImportColumnMappingOutputs
+                (Id, MappingId, OutputToken, DestinationTable, DestinationField, FieldDefinitionId, SortOrder)
+            VALUES
+                (NEWID(), @MappingId, @OutputToken, @DestinationTable, @DestinationField, @FieldDefinitionId, @SortOrder)
             """;
         using var conn = (System.Data.Common.DbConnection)_db.CreateConnection();
         await conn.OpenAsync();
         using var tx = conn.BeginTransaction();
         await conn.ExecuteAsync(deleteSql, new { BatchId = batchId }, tx);
-        foreach (var m in mappings)
+        var mappingList = mappings.ToList();
+        foreach (var m in mappingList)
         {
             m.ImportBatchId = batchId;
-            await conn.ExecuteAsync(insertSql, m, tx);
+            m.MappingId     = Guid.NewGuid();
+            await conn.ExecuteAsync(insertMapSql, m, tx);
+            foreach (var o in m.Outputs)
+            {
+                o.MappingId = m.MappingId;
+                await conn.ExecuteAsync(insertOutSql, o, tx);
+            }
         }
         tx.Commit();
     }
@@ -197,9 +230,10 @@ public class ImportRepository(IDbConnectionFactory db) : IImportRepository
                 ,   HeaderFingerprint
                 ,   CsvHeader
                 ,   CsvColumnIndex
-                ,   MappingType
-                ,   CustomerFieldName
+                ,   DestinationTable
+                ,   DestinationField
                 ,   FieldDefinitionId
+                ,   TransformType
                 ,   DisplayOrder
                 ,   LastUsedAt
                 ,   UseCount
@@ -217,19 +251,22 @@ public class ImportRepository(IDbConnectionFactory db) : IImportRepository
         const string mergeSql = """
             MERGE SavedColumnMappings AS target
             USING (SELECT @OrganisationId AS OrganizationId, @Fingerprint AS HeaderFingerprint, @CsvHeader AS CsvHeader) AS src
-                ON target.OrganizationId = src.OrganizationId
-               AND target.HeaderFingerprint = src.HeaderFingerprint
-               AND target.CsvHeader = src.CsvHeader
+                ON  target.OrganizationId    = src.OrganizationId
+                AND target.HeaderFingerprint = src.HeaderFingerprint
+                AND target.CsvHeader         = src.CsvHeader
             WHEN MATCHED THEN
-                UPDATE SET MappingType      = @MappingType
-                        , CustomerFieldName = @CustomerFieldName
-                        , FieldDefinitionId = @FieldDefinitionId
-                        , DisplayOrder      = @DisplayOrder
-                        , LastUsedAt        = SYSUTCDATETIME()
-                        , UseCount          = target.UseCount + 1
+                UPDATE SET DestinationTable = @DestinationTable
+                        ,  DestinationField = @DestinationField
+                        ,  FieldDefinitionId = @FieldDefinitionId
+                        ,  TransformType     = @TransformType
+                        ,  DisplayOrder      = @DisplayOrder
+                        ,  LastUsedAt        = SYSUTCDATETIME()
+                        ,  UseCount          = target.UseCount + 1
             WHEN NOT MATCHED THEN
-                INSERT (Id, OrganizationId, HeaderFingerprint, CsvHeader, CsvColumnIndex, MappingType, CustomerFieldName, FieldDefinitionId, DisplayOrder, LastUsedAt, UseCount)
-                VALUES (NEWID(), @OrganisationId, @Fingerprint, @CsvHeader, @CsvColumnIndex, @MappingType, @CustomerFieldName, @FieldDefinitionId, @DisplayOrder, SYSUTCDATETIME(), 1);
+                INSERT (Id, OrganizationId, HeaderFingerprint, CsvHeader, CsvColumnIndex,
+                        DestinationTable, DestinationField, FieldDefinitionId, TransformType, DisplayOrder, LastUsedAt, UseCount)
+                VALUES (NEWID(), @OrganisationId, @Fingerprint, @CsvHeader, @CsvColumnIndex,
+                        @DestinationTable, @DestinationField, @FieldDefinitionId, @TransformType, @DisplayOrder, SYSUTCDATETIME(), 1);
             """;
         using var conn = (System.Data.Common.DbConnection)_db.CreateConnection();
         await conn.OpenAsync();
@@ -242,12 +279,76 @@ public class ImportRepository(IDbConnectionFactory db) : IImportRepository
                 Fingerprint     = fingerprint,
                 m.CsvHeader,
                 m.CsvColumnIndex,
-                m.MappingType,
-                m.CustomerFieldName,
+                m.DestinationTable,
+                m.DestinationField,
                 m.FieldDefinitionId,
+                m.TransformType,
                 m.DisplayOrder
             }, tx);
         }
+        tx.Commit();
+    }
+
+    public async Task<ImportBatch?> GetBatchBySourceAsync(Guid organisationId, string sourceIdentifier)
+    {
+        const string sql = """
+            SELECT TOP 1
+                    Id                  AS BatchId
+                ,   OrganizationId
+                ,   FileName
+                ,   FileType
+                ,   FileHeaders
+                ,   HeaderFingerprint
+                ,   FileStoragePath
+                ,   TotalRows
+                ,   ImportedRows
+                ,   SkippedRows
+                ,   ErrorRows
+                ,   Status
+                ,   DuplicateStrategy
+                ,   UploadedBy
+                ,   UploadedAt
+                ,   MappingSavedAt
+                ,   ExecutionStartedAt
+                ,   CompletedAt
+                ,   Notes
+            FROM    ImportBatches
+            WHERE   OrganizationId = @OrganisationId
+                AND Notes = @SourceIdentifier
+            ORDER BY UploadedAt DESC
+            """;
+        using var conn = _db.CreateConnection();
+        return await conn.QuerySingleOrDefaultAsync<ImportBatch>(sql,
+            new { OrganisationId = organisationId, SourceIdentifier = sourceIdentifier });
+    }
+
+    public async Task ClearErrorsAsync(Guid batchId)
+    {
+        const string sql = "DELETE FROM ImportErrors WHERE ImportBatchId = @BatchId";
+        using var conn = _db.CreateConnection();
+        await conn.ExecuteAsync(sql, new { BatchId = batchId });
+    }
+
+    public async Task DeleteBatchAsync(Guid batchId)
+    {
+        // Delete outputs first (no cascade on MappingOutputs → Mappings in all environments)
+        const string deleteOutputsSql = """
+            DELETE o
+            FROM   ImportColumnMappingOutputs o
+            INNER JOIN ImportColumnMappings m ON m.Id = o.MappingId
+            WHERE  m.ImportBatchId = @BatchId
+            """;
+        const string deleteMappingsSql = "DELETE FROM ImportColumnMappings WHERE ImportBatchId = @BatchId";
+        const string deleteErrorsSql   = "DELETE FROM ImportErrors          WHERE ImportBatchId = @BatchId";
+        const string deleteBatchSql    = "DELETE FROM ImportBatches          WHERE Id           = @BatchId";
+
+        using var conn = (System.Data.Common.DbConnection)_db.CreateConnection();
+        await conn.OpenAsync();
+        using var tx = conn.BeginTransaction();
+        await conn.ExecuteAsync(deleteOutputsSql, new { BatchId = batchId }, tx);
+        await conn.ExecuteAsync(deleteMappingsSql, new { BatchId = batchId }, tx);
+        await conn.ExecuteAsync(deleteErrorsSql,   new { BatchId = batchId }, tx);
+        await conn.ExecuteAsync(deleteBatchSql,    new { BatchId = batchId }, tx);
         tx.Commit();
     }
 }

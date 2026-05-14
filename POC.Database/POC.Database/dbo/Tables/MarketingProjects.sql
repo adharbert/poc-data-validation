@@ -26,6 +26,7 @@ CREATE TABLE dbo.MarketingProjects (
     [OrganizationId]        [uniqueidentifier]  NOT NULL,
     [ContractId]            [uniqueidentifier]  NULL,       -- optional FK to Contracts
     [ProjectName]           nvarchar(200)       NOT NULL,
+    [ProjectType]           nvarchar(50)        NULL,
     [MarketingStartDate]    date                NOT NULL,
     [MarketingEndDate]      date                NULL,       -- NULL = ongoing
     [IsActive]              bit                 NOT NULL    DEFAULT (1),
