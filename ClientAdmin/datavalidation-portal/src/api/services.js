@@ -31,7 +31,7 @@ export const fieldApi = {
   update:    (organizationId, fieldId, data) =>
     api.put(`/fields/${fieldId}?organizationId=${organizationId}`, data).then(r => r.data),
   setStatus: (organizationId, fieldId, isActive) =>
-    api.patch(`/fields/${fieldId}/status?organizationId=${organizationId}`, { isActive }).then(r => r.data),
+    api.patch(`/fields/${fieldId}/status/${isActive}?organizationId=${organizationId}`).then(r => r.data),
   reorder:   (organizationId, data) =>
     api.post(`/fields/reorder?organizationId=${organizationId}`, data).then(r => r.data),
 }

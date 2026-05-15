@@ -148,12 +148,12 @@ Controlled by `ImportBatches.DuplicateStrategy`:
 | `update` | Existing customer's fields are updated with new data |
 | `error` | Row is written to `ImportErrors` as a `duplicate` type |
 
-**Match priority:** `OriginalId` is checked first (within the same Organisation). If no match is found, `Email` is checked next. If neither is mapped, or neither matches, the row is treated as a new customer.
+**Match key:** `OriginalId` only. Email is intentionally excluded — family members may share an email address and should each be imported as separate customers.
 
 This means:
-- If two rows have the same `OriginalId`, only the first is imported (under `skip` strategy).
-- If a row has no `OriginalId` but has an `Email` that already exists, the email match fires.
-- Duplicate error messages indicate which field matched: `"Customer with OriginalId 'X' already exists."` or `"Customer with email 'x@y.com' already exists."`
+- If a row has an `OriginalId` that already exists in the org, the duplicate strategy applies.
+- If no `OriginalId` is mapped, or the value is blank, the row is always treated as a new customer regardless of email.
+- Duplicate error message: `"Customer with OriginalId 'X' already exists."`
 
 ---
 

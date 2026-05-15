@@ -107,11 +107,13 @@ A new row in `FieldDefinitions` is all it takes.
 | Field Sections | `/organizations/:id/inputs` | Part of Inputs page |
 | Field Definitions (Inputs) | `/organizations/:id/inputs` | CRUD, type-aware (incl. phone), options, drag-and-drop |
 | Form Preview | `/organizations/:id/inputs` | Admin selects customer, sees live form |
-| Customers | `/organizations/:id/customers` | Paginated list, create/edit/activate/deactivate |
+| Customers | `/organizations/:id/customers` | AG Grid list with client-side search/sort/filter/pagination; row click navigates to detail |
+| Customer Detail | `/organizations/:id/customers/:customerId` | Per-customer view: core info, emails, phones, addresses, field values |
 | Contracts | (within org context) | Per-org, single active constraint |
 | Marketing Projects | (within org context) | Per-org, multiple active allowed |
-| CSV/Excel Import | `/organizations/:id/import` | 5-step wizard: upload → map → preview → execute |
-| Import Staging | `/organizations/:id/import-staging` | Resolve unmatched columns |
+| CSV/Excel Import | `/organizations/:id/import` | 5-step wizard: upload → map → value aliases → preview → execute |
+| Import Staging | `/organizations/:id/import-staging` | Resolve unmatched columns post-import |
+| Import History | `/organizations/:id/import` | Review past batches; error drill-down; re-import |
 | Organisation search | `/organizations` | Server-side `?search=` on name/abbreviation/code; debounced input |
 | Dashboard org filter | `/dashboard` | Client-side search filter on org comparison table |
 | Phone field type | `/organizations/:id/inputs` | Stored as digits; live `(XXX) XXX-XXXX` masking on input |
@@ -120,17 +122,21 @@ A new row in `FieldDefinitions` is all it takes.
 | Number display formatting | — | `fmtNumber()` strips trailing zeros — `42.00` → `42`, `3.14` → `3.14` |
 | Serilog config | — | DB sinks toggled per environment via appsettings |
 | Unit test suite | — | `POC.CustomerValidation.Test` — 142 xUnit tests, all 10 controllers, ≥ 90% coverage |
-| Customer Addresses | — | `CustomerAddresses` table (temporal), address history, Melissa validation stub, confirm endpoint |
+| Customer Addresses | — | `CustomerAddresses` table (temporal), address history, Melissa validation stub |
+| Azure Blob / SFTP | — | Container provisioned per org; SFTP drop-zone per project; Event Grid webhook + polling fallback |
+| Async import execution | — | Background worker via `Channel<Guid>`; SignalR push on complete/fail; 30s polling fallback |
+| Duplicate detection | — | OriginalId-only dedup per org; configurable skip / update / error strategy |
 
 ### Remaining
 
 | Feature | Notes |
 |---|---|
-| Customer detail page | Drill-down from customers list — API already exists |
-| Address UI | Admin form for creating/editing customer addresses — backend ready |
+| Segmentations | Phase 3 — API + UI for building/importing customer segments per project |
+| Address create UI | Admin form for creating/editing customer addresses — backend ready |
 | Melissa integration | `MelissaService` is a stub — wire up real REST API when credentials available |
 | Customer Validation Portal | Separate Vite app in `ClientPortal/` — not yet scaffolded |
 | Authentication | Azure AD (admin) + magic-link (customer portal) |
+| Analytics & Campaigns | Phase 4 — scoring import, vendor exports, canonical standardization |
 
 ---
 
@@ -200,9 +206,10 @@ poc-data-validation/
 │       │   │   ├── DashboardPage.jsx
 │       │   │   ├── OrganizationsPage.jsx
 │       │   │   ├── OrgDetailPage.jsx           ← org landing: stats, contracts, projects
-│       │   │   ├── CustomersPage.jsx
+│       │   │   ├── CustomersPage.jsx           ← AG Grid list with search/filter/paging
+│       │   │   ├── CustomerDetailPage.jsx      ← emails, phones, addresses, field values
 │       │   │   ├── InputsPage.jsx              ← sections + fields + preview
-│       │   │   ├── ImportPage.jsx
+│       │   │   ├── ImportPage.jsx              ← 5-step wizard + history
 │       │   │   └── ImportStagingPage.jsx
 │       │   ├── utils/
 │       │   │   └── dates.js                    ← fmtDate (MM/dd/yyyy) + fmtPhone
@@ -223,7 +230,11 @@ poc-data-validation/
     ├── TASK-06-FRONTEND.md
     ├── TASK-07-IMPORT.md
     ├── TASK-08-WHATS_NEXT.md
-    └── TASK-09-CONTRACTS-PROJECTS.md
+    ├── TASK-09-CONTRACTS-PROJECTS.md
+    ├── TASK-10-ANALYTICS-CAMPAIGNS.md
+    ├── TASK-11-ETL-IMPORT-GUIDE.md
+    ├── TASK-12-MARKETING-GIFT-ANALYTICS.md
+    └── UPDATE-00-INGESTION_PIPELINE_SPEC.md
 ```
 
 ---
@@ -295,20 +306,30 @@ The database is managed via an SSDT project (`POC.Database/`). Publish via Visua
 using the profile `POC.Database.publish.xml` (data-loss protection is disabled in the
 profile to allow iterative schema changes).
 
-### Post-deployment scripts — run in this order
+### Post-deployment scripts
+
+All scripts are executed automatically by `scripts/Script.PostDeployment1.sql`
+when the DACPAC is published. Scripts are idempotent — safe to re-run.
 
 | Order | Script | Purpose |
 |---|---|---|
-| 1 | *(base schema)* | Core tables created by DACPAC |
-| 2 | `01_SeedData.sql` | 50 test customers |
-| 3 | `02_SeedDataFieldOptions_States.sql` | US states dropdown options |
-| 4 | `03_SeedDataFieldOptions_HighestDegree.sql` | Degree level options |
-| 5 | `04_Migration_ImportTables.sql` | Import + staging tables |
-| 6 | `05_Contract_3CFDCADA.sql` | Seed contract for ADX org |
-| 7 | `06_MarketingProject_ADX.sql` | Seed marketing project for ADX org |
-| 8 | `Migration_003_FieldDefinitions_Phone.sql` | Adds `DisplayFormat` column to `FieldDefinitions` |
+| 1 | *(DACPAC)* | All tables, indexes, and constraints |
+| 2 | *(inline in Script.PostDeployment1.sql)* | Re-enables system versioning on `Organizations` and `Customers` temporal tables |
+| 3 | `Post-Deployment/01_StateOptions.sql` | US states field options |
+| 4 | `Post-Deployment/02_HighestSchoolingOptions.sql` | Highest schooling / degree options |
+| 5 | `Post-Deployment/DEVOnly_01_Organizations-Fake.sql` | **Dev only** — seed fake organizations |
+| 6 | `Post-Deployment/03_Contract_3CFDCADA.sql` | Seed contract for ADX org |
+| 7 | `Post-Deployment/04_MarketingProject_ADX.sql` | Seed marketing project for ADX org |
+| 8 | `Post-Deployment/05_LibraryFieldData.sql` | Library field seed data |
 
-Scripts are idempotent — safe to re-run. Each checks for existing data before inserting.
+### Scripts that must be run manually
+
+These exist in `Post-Deployment/` but are **not** included in `Script.PostDeployment1.sql`:
+
+| Script | Purpose | When to run |
+|---|---|---|
+| `06_CustomerAddresses_GeographyPoint.sql` | Adds computed geography column to `CustomerAddresses` (cannot live in the SSDT table definition) | Once, after initial publish |
+| `DevOnly_02_CustomerSampleData.sql` | **Dev only** — 2 field sections, 10 field definitions, 50 customers, 500 field values for local testing | Local dev setup only |
 
 ### Key schema notes
 
@@ -432,3 +453,7 @@ All detailed documentation lives in [`TASK-FILES/`](TASK-FILES/).
 | [TASK-07 — Import](TASK-FILES/TASK-07-IMPORT.md) | CSV/Excel import design, 5-step flow, value mapping |
 | [TASK-08 — What's Next](TASK-FILES/TASK-08-WHATS_NEXT.md) | Remaining work, prioritised |
 | [TASK-09 — Contracts & Projects](TASK-FILES/TASK-09-CONTRACTS-PROJECTS.md) | Contracts, Marketing Projects, Import Staging — business rules |
+| [TASK-10 — Analytics & Campaigns](TASK-FILES/TASK-10-ANALYTICS-CAMPAIGNS.md) | Phase 4 — scoring, canonical standardization, vendor exports (Five9, Iterable, mailing) |
+| [TASK-11 — ETL Import Guide](TASK-FILES/TASK-11-ETL-IMPORT-GUIDE.md) | API-driven import workflow for ETL teams — mapping payload reference, value aliases, error handling |
+| [TASK-12 — Marketing, Gift & Analytics Staging](TASK-FILES/TASK-12-MARKETING-GIFT-ANALYTICS.md) | Planned — canonical marketing flags, gift summary, analytics staging table design |
+| [UPDATE-00 — Ingestion Pipeline Spec](TASK-FILES/UPDATE-00-INGESTION_PIPELINE_SPEC.md) | Full technical specification for the AI-assisted multitenant ETL ingestion pipeline |

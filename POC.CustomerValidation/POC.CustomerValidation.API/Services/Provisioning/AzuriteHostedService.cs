@@ -14,12 +14,12 @@ internal sealed class AzuriteHostedService(
 {
     private Process? _process;
 
-    public Task StartAsync(CancellationToken cancellationToken)
+    public async Task StartAsync(CancellationToken cancellationToken)
     {
         if (IsPortInUse(10000))
         {
             logger.LogInformation("Azurite already running on port 10000 — skipping auto-start");
-            return Task.CompletedTask;
+            return;
         }
 
         var location = configuration["AzureStorage:AzuriteLocation"] ?? @"C:\azurite";
@@ -46,9 +46,12 @@ internal sealed class AzuriteHostedService(
             logger.LogWarning(ex,
                 "Could not auto-start Azurite. Run manually: azurite --silent --location \"{Location}\" --debug \"{DebugLog}\"",
                 location, debugLog);
+            return;
         }
 
-        return Task.CompletedTask;
+        // Wait until Azurite is actually listening before returning, so that services
+        // registered after this one (StartupBlobProvisioningService) don't race ahead.
+        await WaitForPortAsync(10000, timeoutSeconds: 15, cancellationToken);
     }
 
     public Task StopAsync(CancellationToken cancellationToken)
@@ -70,6 +73,26 @@ internal sealed class AzuriteHostedService(
     }
 
     public void Dispose() => _process?.Dispose();
+
+    private async Task WaitForPortAsync(int port, int timeoutSeconds, CancellationToken cancellationToken)
+    {
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        cts.CancelAfter(TimeSpan.FromSeconds(timeoutSeconds));
+
+        while (!cts.Token.IsCancellationRequested)
+        {
+            if (IsPortInUse(port))
+            {
+                logger.LogInformation("Azurite is ready on port {Port}", port);
+                return;
+            }
+
+            try { await Task.Delay(250, cts.Token); }
+            catch (OperationCanceledException) { break; }
+        }
+
+        logger.LogWarning("Azurite did not become ready on port {Port} within {Timeout}s", port, timeoutSeconds);
+    }
 
     private static bool IsPortInUse(int port)
     {

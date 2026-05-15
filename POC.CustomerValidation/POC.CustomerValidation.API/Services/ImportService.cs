@@ -297,13 +297,11 @@ public class ImportService(
                     }
                 }
 
-                // Deduplication: OriginalId takes priority, then Email
+                // Deduplication: OriginalId only — email is intentionally excluded
+                // because family members may share an email address.
                 Customer? existing = null;
                 if (!string.IsNullOrWhiteSpace(customerData.OriginalId))
                     existing = await customerRepo.GetByOriginalIdAsync(batch.OrganizationId, customerData.OriginalId);
-
-                if (existing is null && !string.IsNullOrWhiteSpace(customerData.Email))
-                    existing = await customerRepo.GetByEmailAsync(batch.OrganizationId, customerData.Email);
 
                 if (existing is not null && batch.DuplicateStrategy == "skip")
                 {
@@ -312,16 +310,13 @@ public class ImportService(
                 }
                 if (existing is not null && batch.DuplicateStrategy == "error")
                 {
-                    var dupeMsg = !string.IsNullOrWhiteSpace(customerData.OriginalId) && existing.OriginalId == customerData.OriginalId
-                        ? $"Customer with OriginalId '{customerData.OriginalId}' already exists."
-                        : $"Customer with email '{customerData.Email}' already exists.";
                     await importRepo.AddErrorAsync(new ImportError
                     {
                         ImportBatchId   = batchId,
                         RowNumber       = rowNum,
                         RawData         = JsonSerializer.Serialize(row),
                         ErrorType       = "duplicate",
-                        ErrorMessage    = dupeMsg,
+                        ErrorMessage    = $"Customer with OriginalId '{customerData.OriginalId}' already exists.",
                     });
                     errors++;
                     continue;

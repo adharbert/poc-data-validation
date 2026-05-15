@@ -29,12 +29,13 @@ builder.Services.AddCors(options =>
 
 
 
-// Handle DI setups.  Startup/DependencyInjectionSetup.cs
-builder.Services.RegisterServices(builder.Configuration);
-
-// Auto-start Azurite in Development so Azure Storage works without a separate terminal.
+// Auto-start Azurite in Development first — must be registered before RegisterServices()
+// so it starts before StartupBlobProvisioningService and BlobImportPollingService.
 if (builder.Environment.IsDevelopment())
     builder.Services.AddHostedService<AzuriteHostedService>();
+
+// Handle DI setups.  Startup/DependencyInjectionSetup.cs
+builder.Services.RegisterServices(builder.Configuration);
 
 
 // Add services to the container.
@@ -78,7 +79,7 @@ app.MapOpenApi();
 app.MapScalarApiReference(options =>
 {
     options.Title = "My API";
-    options.Theme = ScalarTheme.DeepSpace;
+    options.Theme = ScalarTheme.Moon;
     options.CustomCss = ".section-flare { height: 100px; }";  // For some reason, if I don't add this, the UI has a HUGE gap from top to first endpoint.
 });
 

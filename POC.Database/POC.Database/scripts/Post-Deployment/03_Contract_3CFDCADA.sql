@@ -10,14 +10,14 @@ BEGIN TRY
     IF NOT EXISTS (
         SELECT 1 FROM dbo.Contracts
         WHERE ContractNumber = 'PCI2600142'
-          AND OrganizationId = '3CFDCADA-ADC0-F011-B692-A0B339B26E42'
+          AND OrganizationId = '3EFDCADA-ADC0-F011-B692-A0B339B26E42'
     )
     BEGIN
         INSERT INTO dbo.Contracts
             (OrganizationId, ContractName, ContractNumber, StartDate, EndDate, IsActive, CreatedBy)
         VALUES
             (
-                '3CFDCADA-ADC0-F011-B692-A0B339B26E42',
+                '3EFDCADA-ADC0-F011-B692-A0B339B26E42',
                 'Annual Service Agreement 2026',
                 'PCI2600142',
                 '2026-01-01',

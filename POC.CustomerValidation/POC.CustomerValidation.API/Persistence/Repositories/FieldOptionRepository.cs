@@ -41,6 +41,7 @@ public class FieldOptionRepository(IDbConnectionFactory db, ILogger<FieldOptionR
             from	FieldOptions
             WHERE	FieldDefinitionId = @FieldDefinitionId
             		AND (@IncludeInactive = 1 OR IsActive = 1)
+            ORDER BY DisplayOrder
             """;
 
         using var conn = _db.CreateConnection();

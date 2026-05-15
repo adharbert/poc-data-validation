@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Outlet, NavLink, useParams, useLocation } from 'react-router-dom'
+import { useOrganization } from '@/hooks/useApi.js'
 
 const NAV_ITEMS = [
   { to: '/dashboard',      icon: '📊', label: 'Dashboard' },
@@ -58,6 +59,7 @@ export default function AppLayout() {
   const params   = useParams()
   const orgId    = params.organizationId
   const title    = usePageTitle()
+  const { data: org } = useOrganization(orgId)
 
   return (
     <div className="app-shell">
@@ -85,7 +87,9 @@ export default function AppLayout() {
 
           {orgId && !collapsed && (
             <>
-              <div className="nav-section-label mt-2">Organisation</div>
+              <div className="nav-section-label mt-2">
+                {org?.abbreviation ? `Organisation · ${org.abbreviation}` : 'Organisation'}
+              </div>
               <OrgSubNav orgId={orgId} />
             </>
           )}

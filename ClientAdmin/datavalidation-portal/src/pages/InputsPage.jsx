@@ -290,6 +290,29 @@ function FieldModal({ organizationId, field, sections, fields, onClose }) {
   )
 }
 
+// ─── Sortable option row ─────────────────────────────────────────────────────
+function SortableOptionRow({ opt, index, onUpdate, onRemove }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id: opt._key })
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  }
+
+  return (
+    <div ref={setNodeRef} style={style} className="d-flex gap-2 mb-2 align-items-center">
+      <DragHandle listeners={listeners} attributes={attributes} />
+      <input className="form-control form-control-sm" placeholder="Key" value={opt.optionKey || ''}
+        onChange={e => onUpdate(index, 'optionKey', e.target.value)} />
+      <input className="form-control form-control-sm" placeholder="Label" value={opt.optionLabel || ''}
+        onChange={e => onUpdate(index, 'optionLabel', e.target.value)} />
+      <button type="button" className="btn btn-sm btn-outline-danger" onClick={() => onRemove(index)}>✕</button>
+    </div>
+  )
+}
+
 // ─── Field options modal ─────────────────────────────────────────────────────
 function FieldOptionsModal({ organizationId, field, allFields, onClose }) {
   const toast  = useToast()
@@ -299,6 +322,11 @@ function FieldOptionsModal({ organizationId, field, allFields, onClose }) {
   const [localSourceId, setLocalSourceId] = useState(field.optionsSourceFieldId ?? '')
   const [items, setItems] = useState(null)
 
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  )
+
   const sourceChanged = localSourceId !== (field.optionsSourceFieldId ?? '')
   const isInherited   = !!localSourceId
   const effectiveId   = localSourceId || field.fieldDefinitionId
@@ -306,14 +334,20 @@ function FieldOptionsModal({ organizationId, field, allFields, onClose }) {
   const { data: options, isLoading } = useFieldOptions(organizationId, effectiveId)
   const save = useSaveFieldOptions(organizationId, field.fieldDefinitionId)
 
-  const opts = items ?? (options ?? [])
+  // Initialise own-field items with a stable _key for dnd-kit once options load
+  useEffect(() => {
+    if (!isInherited && options != null && items === null)
+      setItems(options.map(o => ({ ...o, _key: o.id ?? crypto.randomUUID() })))
+  }, [options])
+
+  const opts = isInherited ? (options ?? []) : (items ?? [])
 
   const sourceFields = (allFields ?? []).filter(
     f => (f.fieldType === 'dropdown' || f.fieldType === 'multiselect') && f.fieldDefinitionId !== field.fieldDefinitionId
   )
 
   function addItem() {
-    setItems([...opts, { optionKey: '', optionLabel: '', displayOrder: opts.length + 1, isActive: true }])
+    setItems([...opts, { _key: crypto.randomUUID(), optionKey: '', optionLabel: '', displayOrder: opts.length + 1, isActive: true }])
   }
   function updateItem(i, key, val) {
     setItems(opts.map((o, idx) => idx === i ? { ...o, [key]: val } : o))
@@ -322,13 +356,21 @@ function FieldOptionsModal({ organizationId, field, allFields, onClose }) {
     setItems(opts.filter((_, idx) => idx !== i))
   }
 
+  function handleOptionDragEnd(event) {
+    const { active, over } = event
+    if (!over || active.id === over.id) return
+    const oldIdx = opts.findIndex(o => o._key === active.id)
+    const newIdx = opts.findIndex(o => o._key === over.id)
+    setItems(arrayMove(opts, oldIdx, newIdx).map((o, i) => ({ ...o, displayOrder: i + 1 })))
+  }
+
   function handleFileUpload(e) {
     const file = e.target.files[0]
     if (!file) return
     const reader = new FileReader()
     reader.onload = evt => {
       const parsed = parseOptionsCsv(evt.target.result)
-      setItems(parsed.map(r => ({ ...r, isActive: true })))
+      setItems(parsed.map((r, i) => ({ ...r, _key: crypto.randomUUID(), displayOrder: i + 1, isActive: true })))
       toast(`Loaded ${parsed.length} options from file.`)
     }
     reader.readAsText(file)
@@ -413,17 +455,16 @@ function FieldOptionsModal({ organizationId, field, allFields, onClose }) {
               </div>
             ) : (
               <>
-                <div style={{ maxHeight: 280, overflowY: 'auto' }}>
-                  {opts.map((opt, i) => (
-                    <div key={i} className="d-flex gap-2 mb-2 align-items-center">
-                      <input className="form-control form-control-sm" placeholder="Key" value={opt.optionKey || ''}
-                        onChange={e => updateItem(i, 'optionKey', e.target.value)} />
-                      <input className="form-control form-control-sm" placeholder="Label" value={opt.optionLabel || ''}
-                        onChange={e => updateItem(i, 'optionLabel', e.target.value)} />
-                      <button type="button" className="btn btn-sm btn-outline-danger" onClick={() => removeItem(i)}>✕</button>
+                <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleOptionDragEnd}>
+                  <SortableContext items={opts.map(o => o._key)} strategy={verticalListSortingStrategy}>
+                    <div style={{ maxHeight: 280, overflowY: 'auto' }}>
+                      {opts.map((opt, i) => (
+                        <SortableOptionRow key={opt._key} opt={opt} index={i}
+                          onUpdate={updateItem} onRemove={removeItem} />
+                      ))}
                     </div>
-                  ))}
-                </div>
+                  </SortableContext>
+                </DndContext>
                 <div className="d-flex gap-2 mt-2 align-items-center">
                   <button type="button" className="btn btn-sm btn-outline-secondary" onClick={addItem}>+ Add Option</button>
                   <button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => fileRef.current?.click()}>

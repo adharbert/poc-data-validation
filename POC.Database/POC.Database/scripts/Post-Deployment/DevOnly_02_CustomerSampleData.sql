@@ -18,7 +18,7 @@
 
 SET NOCOUNT ON;
 
-DECLARE @OrgId UNIQUEIDENTIFIER = '';   -- <-- set your OrganizationId here
+DECLARE @OrgId UNIQUEIDENTIFIER = '3EFDCADA-ADC0-F011-B692-A0B339B26E42';   -- <-- set your OrganizationId here
 
 -- ============================================================
 --  Validate org exists

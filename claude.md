@@ -32,6 +32,7 @@ covered by the quick-reference rules below.
 | [TASK-FILES/TASK-09-CONTRACTS-PROJECTS.md](TASK-FILES/TASK-09-CONTRACTS-PROJECTS.md) | Contracts, Marketing Projects, Import Staging — business rules and schema |
 | [TASK-FILES/TASK-10-ANALYTICS-CAMPAIGNS.md](TASK-FILES/TASK-10-ANALYTICS-CAMPAIGNS.md) | Phase 4 — analytics scoring, canonical data standardization, vendor integrations (Five9, Iterable, mailing) |
 | [TASK-FILES/TASK-11-ETL-IMPORT-GUIDE.md](TASK-FILES/TASK-11-ETL-IMPORT-GUIDE.md) | ETL team guide — full API-driven import workflow, mapping payload reference, value aliases, error handling |
+| [TASK-FILES/TASK-12-MARKETING-GIFT-ANALYTICS.md](TASK-FILES/TASK-12-MARKETING-GIFT-ANALYTICS.md) | Planned — canonical marketing flags, gift summary, analytics staging table — needs discussion before building |
 
 ---
 
