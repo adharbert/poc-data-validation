@@ -1,0 +1,55 @@
+trigger:
+- develop
+
+pool:
+  vmImage: windows-latest
+
+variables:
+  commonSubscription: sc-common-001-Marketing
+  keyVaultName: kv-crcommon-001
+  jsonFilePath: $(Agent.BuildDirectory)/s/ADHTestDatabase/devEnv.json
+
+steps:
+- task: NuGetAuthenticate@1
+  displayName: 'Authenticate to NuGet'
+
+- task: AzureKeyVault@2
+  displayName: 'Fetch secrets from Key Vault'
+  inputs:
+    azureSubscription: '$(commonSubscription)'
+    KeyVaultName: '$(keyVaultName)'
+    SecretsFilter: '*'
+    RunAsPreJob: false
+
+- task: DotNetCoreCLI@2
+  displayName: 'Build SQL project'
+  inputs:
+    command: 'build'
+    projects: '**/ADHTestDatabase.sqlproj'
+    arguments: '--configuration Release'
+
+- task: AzureCLI@2
+  displayName: 'Deploy database'
+  inputs:
+    azureSubscription: 'sc-mktg-dev-001'
+    scriptType: 'pscore'
+    scriptLocation: 'inlineScript'
+    inlineScript: |
+      # Read environment config from JSON
+      $env = Get-Content -Path '$(jsonFilePath)' | Out-String | ConvertFrom-Json
+
+      sqlpackage /Action:Publish `
+        /SourceFile:"$(Build.SourcesDirectory)/ADHTestDatabase/bin/Release/ADHTestDatabase.dacpac" `
+        /TargetServerName:"$($env.SQL_SERVER)" `
+        /TargetDatabaseName:"$($env.SQL_DATABASE)" `
+        /TargetUser:"$(sql-username)" `
+        /TargetPassword:"$(sql-password)" `
+        /TargetTrustServerCertificate:True `
+        /p:BlockOnPossibleDataLoss=$($env.BLOCK_DATA_LOSS)
+
+- task: PublishBuildArtifacts@1
+  displayName: 'Publish dacpac artifact'
+  inputs:
+    PathtoPublish: '$(Build.SourcesDirectory)/ADHTestDatabase/bin/Release'
+    ArtifactName: 'dacpac'
+    publishLocation: 'Container'

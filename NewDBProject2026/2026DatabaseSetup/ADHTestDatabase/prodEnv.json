@@ -1,0 +1,5 @@
+{
+  "SQL_SERVER": "PROD-SQL\\MSQ2022",
+  "SQL_DATABASE": "ADHTestDatabase",
+  "BLOCK_DATA_LOSS": "False"
+}

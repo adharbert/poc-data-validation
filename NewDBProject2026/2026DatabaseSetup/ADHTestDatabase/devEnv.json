@@ -1,0 +1,5 @@
+{
+  "SQL_SERVER": "OPS360\\MSQ2022",
+  "SQL_DATABASE": "ADHTestDatabase_Dev",
+  "BLOCK_DATA_LOSS": "False"
+}

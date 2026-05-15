@@ -1,0 +1,21 @@
+$primary-color: #0d6efd;
+$highlight-color: #fff3cd;
+$highlight-border: #ffc107;
+$speaker-bg: #f8f9fa;
+$shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+$transition-speed: 0.2s;
+$gray-blue: #6c757d;
+$light-blue: #e9ecef;
+$light-red: #ffffff;
+$light-red2: #f1f1f1;
+$med-red: #888;
+$dark-red: #555;
+$dark-blue: #212529;
+$blackish-blue: #212529;
+
+
+
+// Mixins
+@mixin transition($property: all) {
+    transition: $property $transition-speed ease-in-out;
+  }

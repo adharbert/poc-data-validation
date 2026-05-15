@@ -1,0 +1,168 @@
+trigger:
+  branches:
+    include:
+      - main
+  paths:
+    include:
+      - ADHTestDatabase/**
+
+variables:
+  buildConfiguration: Release
+  dacpacName: ADHTestDatabase.dacpac
+
+stages:
+
+# ── BUILD ───────────────────────────────────────────────────────────────────
+- stage: Build
+  displayName: Build dacpac
+  jobs:
+  - job: BuildDacpac
+    displayName: Build SQL project
+    pool:
+      vmImage: windows-latest
+    steps:
+
+    - task: DotNetCoreCLI@2
+      displayName: dotnet build
+      inputs:
+        command: build
+        projects: '**/ADHTestDatabase.sqlproj'
+        arguments: --configuration $(buildConfiguration)
+
+    - task: PublishPipelineArtifact@1
+      displayName: Publish dacpac artifact
+      inputs:
+        targetPath: ADHTestDatabase/bin/$(buildConfiguration)
+        artifact: dacpac
+
+# ── DEPLOY DEV ──────────────────────────────────────────────────────────────
+- stage: DeployDev
+  displayName: Deploy to Dev
+  dependsOn: Build
+  variables:
+    SQL_SERVER:   OPS360\MSQ2022
+    SQL_DATABASE: ADHTestDatabase_Dev
+    BLOCK_DATA_LOSS: False
+  jobs:
+  - deployment: Deploy
+    displayName: Deploy dacpac
+    environment: Development
+    pool:
+      name: Self-Hosted-Agents
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - task: DownloadPipelineArtifact@2
+            displayName: Download dacpac
+            inputs:
+              artifact: dacpac
+              path: $(Pipeline.Workspace)/dacpac
+
+          - script: |
+              sqlpackage /Action:Publish ^
+                /SourceFile:"$(Pipeline.Workspace)/dacpac/$(dacpacName)" ^
+                /TargetServerName:"$(SQL_SERVER)" ^
+                /TargetDatabaseName:"$(SQL_DATABASE)" ^
+                /TargetTrustServerCertificate:True ^
+                /p:BlockOnPossibleDataLoss=$(BLOCK_DATA_LOSS)
+            displayName: Deploy to Dev SQL Server
+
+# ── DEPLOY STAGING ──────────────────────────────────────────────────────────
+- stage: DeployStaging
+  displayName: Deploy to Staging
+  dependsOn: DeployDev
+  variables:
+    SQL_SERVER:   STAGING-SQL\MSQ2022
+    SQL_DATABASE: ADHTestDatabase_Staging
+    BLOCK_DATA_LOSS: False
+  jobs:
+  - deployment: Deploy
+    displayName: Deploy dacpac
+    environment: Staging
+    pool:
+      name: Self-Hosted-Agents
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - task: DownloadPipelineArtifact@2
+            displayName: Download dacpac
+            inputs:
+              artifact: dacpac
+              path: $(Pipeline.Workspace)/dacpac
+
+          - script: |
+              sqlpackage /Action:Publish ^
+                /SourceFile:"$(Pipeline.Workspace)/dacpac/$(dacpacName)" ^
+                /TargetServerName:"$(SQL_SERVER)" ^
+                /TargetDatabaseName:"$(SQL_DATABASE)" ^
+                /TargetTrustServerCertificate:True ^
+                /p:BlockOnPossibleDataLoss=$(BLOCK_DATA_LOSS)
+            displayName: Deploy to Staging SQL Server
+
+# ── DEPLOY PROD ─────────────────────────────────────────────────────────────
+- stage: DeployProd
+  displayName: Deploy to Production
+  dependsOn: DeployStaging
+  variables:
+    SQL_SERVER:   PROD-SQL\MSQ2022
+    SQL_DATABASE: ADHTestDatabase
+    BLOCK_DATA_LOSS: False
+  jobs:
+  - deployment: Deploy
+    displayName: Deploy dacpac
+    # Add a manual approval check on the Production environment in Azure DevOps:
+    # Environments → Production → Approvals and checks → Approvals → add approver(s).
+    environment: Production
+    pool:
+      name: Self-Hosted-Agents
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - task: DownloadPipelineArtifact@2
+            displayName: Download dacpac
+            inputs:
+              artifact: dacpac
+              path: $(Pipeline.Workspace)/dacpac
+
+          - script: |
+              sqlpackage /Action:Script ^
+                /SourceFile:"$(Pipeline.Workspace)/dacpac/$(dacpacName)" ^
+                /TargetServerName:"$(SQL_SERVER)" ^
+                /TargetDatabaseName:"$(SQL_DATABASE)" ^
+                /TargetTrustServerCertificate:True ^
+                /OutputPath:"$(Build.ArtifactStagingDirectory)/deploy-preview.sql"
+            displayName: Generate preview script
+
+          - task: PublishPipelineArtifact@1
+            displayName: Publish preview script
+            inputs:
+              targetPath: $(Build.ArtifactStagingDirectory)/deploy-preview.sql
+              artifact: deploy-preview-prod
+
+          - script: |
+              sqlpackage /Action:Publish ^
+                /SourceFile:"$(Pipeline.Workspace)/dacpac/$(dacpacName)" ^
+                /TargetServerName:"$(SQL_SERVER)" ^
+                /TargetDatabaseName:"$(SQL_DATABASE)" ^
+                /TargetTrustServerCertificate:True ^
+                /p:BlockOnPossibleDataLoss=$(BLOCK_DATA_LOSS)
+            displayName: Deploy to Prod SQL Server
+
+# ── DEPLOY TO AZURE SQL (future) ────────────────────────────────────────────
+# When ready to target Azure SQL, replace the sqlpackage script step in the
+# relevant stage with the task below and add an azureSubscription service
+# connection in Project Settings → Service connections.
+#
+# - task: SqlAzureDacpacDeployment@1
+#   displayName: Deploy to Azure SQL
+#   inputs:
+#     azureSubscription: MyAzureServiceConnection
+#     AuthenticationType: connectionString
+#     ConnectionString: $(AZURE_SQL_CONNECTION_STRING)   # store as a secret pipeline variable
+#     deployType: DacpacTask
+#     DeploymentAction: Publish
+#     DacpacFile: $(Pipeline.Workspace)/dacpac/$(dacpacName)
+#     AdditionalArguments: /p:BlockOnPossibleDataLoss=$(BLOCK_DATA_LOSS)

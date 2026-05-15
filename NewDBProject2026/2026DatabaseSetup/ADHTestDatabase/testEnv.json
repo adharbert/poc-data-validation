@@ -1,0 +1,5 @@
+{
+  "SQL_SERVER": "STAGING-SQL\\MSQ2022",
+  "SQL_DATABASE": "ADHTestDatabase_Test",
+  "BLOCK_DATA_LOSS": "False"
+}

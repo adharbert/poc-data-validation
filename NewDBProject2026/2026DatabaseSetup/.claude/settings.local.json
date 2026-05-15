@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dotnet *)",
+      "PowerShell(Get-ChildItem *)",
+      "PowerShell(dotnet new install *)",
+      "PowerShell(cmd /c \"dir /s /a C:\\\\code\\\\tests\\\\POC\\\\2026DatabaseSetup\")",
+      "PowerShell(sqlpackage *)",
+      "PowerShell(dotnet tool install *)"
+    ]
+  }
+}
